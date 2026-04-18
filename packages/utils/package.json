@@ -1,5 +1,5 @@
 {
-  "name": "@pokemon/builder",
+  "name": "@pokemon/utils",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -14,9 +14,6 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check-types": "tsc --noEmit"
-  },
-  "dependencies": {
-    "@pokemon/domain": "workspace:*"
   },
   "devDependencies": {
     "@repo/typescript-config": "workspace:*",

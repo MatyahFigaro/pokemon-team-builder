@@ -6,7 +6,11 @@
     "dev": "turbo run dev",
     "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
-    "check-types": "turbo run check-types"
+    "check-types": "turbo run check-types",
+    "cli": "pnpm --filter @pokemon/cli dev",
+    "cli:analyze": "pnpm --filter @pokemon/cli dev analyze",
+    "cli:patch": "pnpm --filter @pokemon/cli dev suggest-patch",
+    "cli:normalize": "pnpm --filter @pokemon/cli dev normalize"
   },
   "devDependencies": {
     "prettier": "^3.7.4",

@@ -14,7 +14,9 @@ export function analyzeSynergy(team: Team, dex: SpeciesDexPort, roles: RoleSumma
     for (const type of species.types) uniqueTypes.add(type);
 
     const primary = species.types[0];
-    primaryTypes.set(primary, (primaryTypes.get(primary) ?? 0) + 1);
+    if (primary) {
+      primaryTypes.set(primary, (primaryTypes.get(primary) ?? 0) + 1);
+    }
   }
 
   const hasHazardSetter = roles.some((entry) => entry.roles.includes('hazard-setter'));
