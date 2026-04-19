@@ -155,6 +155,28 @@ function isBssLikeFormat(format: string): boolean {
   return id.includes('bss') || id.includes('battlestadium') || id.includes('championsbss');
 }
 
+function getMegaBaseName(speciesName: string): string {
+  const megaIndex = speciesName.indexOf('-Mega');
+  return megaIndex >= 0 ? speciesName.slice(0, megaIndex) : speciesName;
+}
+
+function isMegaSpecies(species: NonNullable<ReturnType<SpeciesDexPort['getSpecies']>>, dex: SpeciesDexPort): boolean {
+  if (!species.requiredItem) return false;
+  const item = dex.getItem(species.requiredItem);
+  return Boolean(item?.megaStone || item?.megaEvolves || species.name.includes('-Mega'));
+}
+
+function getUsageWeightForCandidate(format: string, species: NonNullable<ReturnType<SpeciesDexPort['getSpecies']>>, dex: SpeciesDexPort): number {
+  const direct = getUsageWeight(format, species.name);
+  if (direct > 0) return direct;
+
+  if (isMegaSpecies(species, dex)) {
+    return getUsageWeight(format, getMegaBaseName(species.name)) * 0.95;
+  }
+
+  return direct;
+}
+
 function getBuildRoleHint(speciesName: string, dex: SpeciesDexPort, style?: BuildConstraints['style']): PreviewRoleHint {
   const species = dex.getSpecies(speciesName);
   if (!species) return 'default';
@@ -315,7 +337,7 @@ function scoreClassicTypeCoreFit(
     const added = missing.filter((type) => candidateTypes.has(type));
 
     if (added.length > 0) {
-      score += (present.length >= 2 ? 10 : 5) + (added.length * 3);
+      score += (present.length >= 2 ? 7 : 4) + (added.length * 2);
       if (style && core.preferredStyles.includes(style)) score += 2;
       reasons.push(`helps complete a ${core.name} backbone`);
       notes.push(`Recognized a ${core.name} shell among the anchors and boosted type-completing partners.`);
@@ -896,6 +918,64 @@ function matchesStyle(speciesName: string, style: BuildConstraints['style'], dex
   return true;
 }
 
+interface RankedBuildCandidate extends BuildRecommendation {
+  types: string[];
+  tags: string[];
+}
+
+function getMissingAnchorTypes(seedTeam: Team, dex: SpeciesDexPort): string[] {
+  const presentTypes = new Set(seedTeam.members.flatMap((member) => dex.getSpecies(member.species)?.types ?? []));
+  return dex.listTypes().filter((type) => !presentTypes.has(type));
+}
+
+function selectDiverseRecommendations(candidates: RankedBuildCandidate[], limit: number, maxMegaCount = Number.POSITIVE_INFINITY): BuildRecommendation[] {
+  const remaining = [...candidates];
+  const selected: RankedBuildCandidate[] = [];
+  const typeCounts = new Map<string, number>();
+  const tagCounts = new Map<string, number>();
+
+  const getAdjustment = (candidate: RankedBuildCandidate): number => {
+    let adjustment = 0;
+
+    const repeatedTypes = candidate.types.filter((type) => (typeCounts.get(type) ?? 0) > 0);
+    adjustment -= repeatedTypes.length * 10;
+    if (repeatedTypes.length === candidate.types.length && repeatedTypes.length > 0) adjustment -= 8;
+
+    const repeatedCompletionTags = candidate.tags.filter((tag) => tag.startsWith('complete:') && (tagCounts.get(tag) ?? 0) > 0);
+    adjustment -= repeatedCompletionTags.length * 12;
+
+    const repeatedCoreTags = candidate.tags.filter((tag) => tag.startsWith('core:') && (tagCounts.get(tag) ?? 0) > 0);
+    adjustment -= Math.max(0, repeatedCoreTags.length - 1) * 6;
+
+    const repeatedTags = candidate.tags.filter((tag) => (tagCounts.get(tag) ?? 0) > 0);
+    adjustment -= Math.max(0, repeatedTags.length - 1) * 3;
+
+    if (candidate.tags.includes('mega') && (tagCounts.get('mega') ?? 0) >= maxMegaCount) adjustment -= 1000;
+
+    if (candidate.types.some((type) => (typeCounts.get(type) ?? 0) === 0)) adjustment += 5;
+    if (candidate.tags.some((tag) => (tagCounts.get(tag) ?? 0) === 0)) adjustment += 4;
+
+    return adjustment;
+  };
+
+  while (selected.length < limit && remaining.length > 0) {
+    remaining.sort((left, right) => {
+      const leftAdjusted = left.score + getAdjustment(left);
+      const rightAdjusted = right.score + getAdjustment(right);
+      return rightAdjusted - leftAdjusted || right.score - left.score || left.species.localeCompare(right.species);
+    });
+
+    const next = remaining.shift();
+    if (!next) break;
+
+    selected.push(next);
+    for (const type of next.types) typeCounts.set(type, (typeCounts.get(type) ?? 0) + 1);
+    for (const tag of next.tags) tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1);
+  }
+
+  return selected.map(({ types, tags, ...entry }) => entry);
+}
+
 export async function buildWithConstraints(constraints: BuildConstraints, deps: AnalyzeTeamDeps): Promise<ConstrainedBuildReport> {
   await preloadUsageAnalytics(constraints.format);
 
@@ -922,32 +1002,45 @@ export async function buildWithConstraints(constraints: BuildConstraints, deps: 
   const existing = new Set(seedTeam.members.map((member) => toId(member.species)));
   const available = deps.dex.listAvailableSpecies(constraints.format);
 
-  const recommendations = available
+  const missingAnchorTypes = new Set(getMissingAnchorTypes(seedTeam, deps.dex));
+  const megaAnchors = seedTeam.members.filter((member) => {
+    const species = deps.dex.getSpecies(member.species);
+    return species ? isMegaSpecies(species, deps.dex) : false;
+  }).length;
+  const maxRecommendedMegas = Math.max(0, 2 - megaAnchors);
+
+  const rankedCandidates = available
     .filter((species) => !existing.has(toId(species.name)))
     .filter((species) => !avoid.has(toId(species.name)))
     .filter((species) => constraints.allowRestricted ? true : species.bst < 671)
     .filter((species) => matchesStyle(species.name, constraints.style, deps.dex, constraints.format))
     .map((species) => {
-      let score = Math.round(getUsageWeight(constraints.format, species.name) * 12);
+      let score = Math.round(getUsageWeightForCandidate(constraints.format, species, deps.dex) * 12);
       const reasons: string[] = [];
       const abilityIds = species.abilities.map(toId);
       const anchorFit = scoreAnchorFit(species, seedTeam, constraints.format, deps.dex, constraints.style);
       const guideFit = scoreGuideDrivenBssFit(species, seedTeam, report, constraints.format, constraints.style, deps.dex);
+      const bulk = species.baseStats.hp + Math.max(species.baseStats.def, species.baseStats.spd);
+      const offense = Math.max(species.baseStats.atk, species.baseStats.spa);
+      const hasPivot = canLearnAnyMove(species.name, BUILD_PIVOT_MOVES, deps.dex);
+      const hasPriority = canLearnAnyMove(species.name, BUILD_PRIORITY_MOVES, deps.dex);
+      const hasSupport = canLearnAnyMove(species.name, BUILD_SUPPORT_MOVES, deps.dex);
+      const megaCandidate = isMegaSpecies(species, deps.dex);
 
       score += anchorFit.score + guideFit.score;
       reasons.push(...anchorFit.reasons, ...guideFit.reasons);
 
-      if (missingRoles.some((role) => normalize(role).includes('speed')) && (species.baseStats.spe >= 100 || canLearnAnyMove(species.name, BUILD_PRIORITY_MOVES, deps.dex))) {
+      if (missingRoles.some((role) => normalize(role).includes('speed')) && (species.baseStats.spe >= 100 || hasPriority)) {
         score += species.baseStats.spe >= 100 ? 7 : 4;
         reasons.push(species.baseStats.spe >= 100 ? 'helps patch missing speed control' : 'adds useful priority insurance');
       }
 
-      if (missingRoles.some((role) => normalize(role).includes('pivot')) && canLearnAnyMove(species.name, BUILD_PIVOT_MOVES, deps.dex)) {
+      if (missingRoles.some((role) => normalize(role).includes('pivot')) && hasPivot) {
         score += 6;
         reasons.push('improves positioning and bring flexibility');
       }
 
-      if (missingRoles.some((role) => normalize(role).includes('stall')) && (canLearnAnyMove(species.name, BUILD_SUPPORT_MOVES, deps.dex) || Math.max(species.baseStats.atk, species.baseStats.spa) >= 120)) {
+      if (missingRoles.some((role) => normalize(role).includes('stall')) && (hasSupport || offense >= 120)) {
         score += 5;
         reasons.push('gives the core a more reliable stallbreaking line');
       }
@@ -957,7 +1050,7 @@ export async function buildWithConstraints(constraints: BuildConstraints, deps: 
         reasons.push(isBssLikeFormat(constraints.format) ? 'adds optional field pressure without warping bring-3 plans' : 'patches the current hazard game');
       }
 
-      if (missingRoles.some((role) => normalize(role).includes('wall')) && species.baseStats.hp + Math.max(species.baseStats.def, species.baseStats.spd) >= 190) {
+      if (missingRoles.some((role) => normalize(role).includes('wall')) && bulk >= 190) {
         score += 6;
         reasons.push('adds sturdier defensive padding');
       }
@@ -992,16 +1085,42 @@ export async function buildWithConstraints(constraints: BuildConstraints, deps: 
         style: constraints.style,
       });
       if (preview) score += 3;
+      else score -= 10;
+
+      if (megaCandidate) {
+        if (preview && anchorFit.score + guideFit.score >= 8) {
+          score += 4;
+          reasons.push('offers a matchup-dependent Mega option that still fits the core');
+        } else {
+          score -= 8;
+        }
+      }
+
+      const tags = [
+        megaCandidate ? 'mega' : null,
+        species.baseStats.spe >= 100 || hasPriority ? 'speed' : null,
+        hasPivot ? 'pivot' : null,
+        hasSupport ? 'utility' : null,
+        bulk >= 190 ? 'bulk' : null,
+        offense >= 115 ? 'breaker' : null,
+        ...species.types.filter((type) => missingAnchorTypes.has(type)).map((type) => `complete:${toId(type)}`),
+        ...reasons
+          .filter((reason) => reason.startsWith('helps complete a '))
+          .map((reason) => `core:${toId(reason.replace('helps complete a ', '').replace(' backbone', ''))}`),
+      ].filter((value): value is string => Boolean(value));
 
       return {
         species: species.name,
         score,
         reasons: (reasons.length ? Array.from(new Set(reasons)) : ['high legal fit with current usage and coverage needs']).slice(0, 3),
         preview,
-      } satisfies BuildRecommendation;
+        types: species.types,
+        tags,
+      } satisfies RankedBuildCandidate;
     })
-    .sort((left, right) => right.score - left.score || left.species.localeCompare(right.species))
-    .slice(0, Math.max(1, 6 - seedTeam.members.length));
+    .sort((left, right) => right.score - left.score || left.species.localeCompare(right.species));
+
+  const recommendations = selectDiverseRecommendations(rankedCandidates, Math.max(1, 6 - seedTeam.members.length), maxRecommendedMegas);
 
   return {
     format: constraints.format,
@@ -1014,7 +1133,8 @@ export async function buildWithConstraints(constraints: BuildConstraints, deps: 
       anchors.length ? 'Scoring now rewards live teammate synergy, defensive coverage, and support value for the requested anchors.' : 'Recommendations are usage-weighted and role-aware.',
       ...(isBssLikeFormat(constraints.format)
         ? [
-            'The BSS teambuilding guide is now reflected in scoring: bring-3 shells, safe leads or pivots, speed control or priority, and matchup patching matter more than generic hazards.',
+            'The BSS teambuilding guide is now reflected in scoring: bring-3 shells, safe leads or pivots, speed control or priority, and matchup patching matter more than generic hazards or same-type stacking.',
+            'The builder also avoids stuffing the roster with too many Mega options; at most two Mega candidates are kept, and they still need real synergy with the rest of the shell.',
             `Current live pressure points include ${(report.threats.topPressureThreats ?? []).slice(0, 3).map((threat) => threat.species).join(', ') || 'the usual top threats'}.`,
           ]
         : []),
