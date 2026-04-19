@@ -21,59 +21,9 @@ function isBssFormat(format: string): boolean {
   return id.includes('bss') || id.includes('battlestadium') || id.includes('championsbss');
 }
 
-const priorityMoves = new Set([
-  'extreme speed',
-  'espeed',
-  'sucker punch',
-  'grassy glide',
-  'ice shard',
-  'mach punch',
-  'vacuum wave',
-  'shadow sneak',
-  'aqua jet',
-  'accelerock',
-  'first impression',
-]);
-
-const immunityAbilityMap: Record<string, string[]> = {
-  Ground: ['levitate', 'earth eater'],
-  Fire: ['flash fire', 'well-baked body'],
-  Water: ['water absorb', 'storm drain', 'dry skin'],
-  Electric: ['volt absorb', 'motor drive', 'lightning rod'],
-  Grass: ['sap sipper'],
-};
-
-const powerAbilities = new Set([
-  'huge power',
-  'pure power',
-  'tough claws',
-  'adaptability',
-  'sheer force',
-  'supreme overlord',
-  'protosynthesis',
-  'quark drive',
-  'transistor',
-  'dragon\'s maw',
-  'fairy aura',
-  'dark aura',
-  'gorilla tactics',
-]);
-
-const disruptionMoves = new Set([
-  'taunt',
-  'haze',
-  'encore',
-  'clear smog',
-  'yawn',
-  'will-o-wisp',
-  'thunder wave',
-  'roar',
-  'whirlwind',
-  'dragon tail',
-]);
-
-function hasTaggedMove(moves: string[], pool: Set<string>): boolean {
-  return moves.some((move) => pool.has(move));
+function getAbilityText(abilityName: string, dex: SpeciesDexPort): string {
+  const ability = dex.getAbility(abilityName);
+  return `${ability?.shortDesc ?? ''} ${ability?.desc ?? ''}`.toLowerCase();
 }
 
 function getMoveInfos(member: Team['members'][number], dex: SpeciesDexPort) {
@@ -99,26 +49,36 @@ function hasDisruptionUtility(member: Team['members'][number], dex: SpeciesDexPo
 }
 
 function hasPowerAbility(abilities: string[], dex?: SpeciesDexPort): boolean {
-  return abilities.some((abilityName) => {
-    const abilityId = normalize(abilityName);
-    if (powerAbilities.has(abilityId)) return true;
+  if (!dex) return false;
 
-    const ability = dex?.getAbility(abilityName);
-    const text = `${ability?.shortDesc ?? ''} ${ability?.desc ?? ''}`.toLowerCase();
-    return text.includes('power multiplied by 1.3')
+  return abilities.some((abilityName) => {
+    const text = getAbilityText(abilityName, dex);
+    return text.includes('attack is doubled')
+      || text.includes('special attack is doubled')
+      || text.includes('power multiplied by 1.3')
+      || text.includes('power multiplied by 1.33')
       || text.includes('power multiplied by 1.5')
       || text.includes('offensive stat is multiplied by 1.5')
+      || text.includes('attack is raised by 1 stage')
+      || text.includes('special attack is raised by 1 stage')
       || text.includes('raises its attack by 1 stage')
-      || text.includes('raises its special attack by 1 stage');
+      || text.includes('raises its special attack by 1 stage')
+      || text.includes('supreme overlord')
+      || text.includes('adaptability');
   });
 }
 
 function abilityCouldGrantImmunity(abilities: string[], attackingType: string, dex: SpeciesDexPort): boolean {
-  const candidates = immunityAbilityMap[attackingType] ?? [];
+  const typeId = attackingType.toLowerCase();
+
   return abilities.some((abilityName) => {
-    const ability = dex.getAbility(abilityName);
-    const text = `${ability?.shortDesc ?? ''} ${ability?.desc ?? ''}`.toLowerCase();
-    return candidates.includes(normalize(abilityName)) || text.includes(`immune to ${attackingType.toLowerCase()}`) || text.includes(`${attackingType.toLowerCase()} immunity`);
+    const text = getAbilityText(abilityName, dex);
+    return text.includes(`immune to ${typeId}`)
+      || text.includes(`${typeId} immunity`)
+      || text.includes(`${typeId}-type moves and restores`)
+      || text.includes(`${typeId}-type moves and raises`)
+      || text.includes(`${typeId}-type moves. the first time it is hit`)
+      || text.includes(`draws ${typeId} moves to itself`);
   });
 }
 
@@ -127,16 +87,17 @@ function scoreLead(member: Team['members'][number], roles: RoleSummary, dex: Spe
   if (!species) return 0;
 
   const moves = member.moves.map(normalize);
+  const moveInfos = getMoveInfos(member, dex);
   let score = 0;
 
   if (roles.roles.includes('lead')) score += 4;
   if (roles.roles.includes('pivot')) score += 3;
   if (roles.roles.includes('hazard-setter')) score += 2;
   if (roles.roles.includes('speed-control')) score += 2;
-  if (moves.includes('fake out')) score += 3;
-  if (moves.includes('taunt')) score += 2;
-  if (hasDisruptionUtility(member, dex) || hasTaggedMove(moves, disruptionMoves)) score += 2;
-  if (hasPriorityPressure(member, dex) || hasTaggedMove(moves, priorityMoves)) score += 1;
+  if (moveInfos.some((move) => move.id === 'fakeout') || moves.includes('fake out')) score += 3;
+  if (moveInfos.some((move) => move.id === 'taunt') || moves.includes('taunt')) score += 2;
+  if (hasDisruptionUtility(member, dex)) score += 2;
+  if (hasPriorityPressure(member, dex)) score += 1;
   if (hasPowerAbility([species.ability], dex)) score += 1;
   if (species.baseStats.spe >= 95) score += 2;
   if (species.baseStats.hp + species.baseStats.def >= 185) score += 1;
@@ -148,13 +109,12 @@ function scorePick(member: Team['members'][number], roles: RoleSummary, dex: Spe
   const species = dex.getBattleProfile(member, format);
   if (!species) return 0;
 
-  const moves = member.moves.map(normalize);
   let score = 0;
   if (roles.roles.includes('wallbreaker')) score += 4;
   if (roles.roles.includes('setup-sweeper')) score += 3;
   if (roles.roles.includes('speed-control')) score += 3;
   if (roles.roles.includes('pivot')) score += 2;
-  if (hasPriorityPressure(member, dex) || hasTaggedMove(moves, priorityMoves)) score += 2;
+  if (hasPriorityPressure(member, dex)) score += 2;
   if (hasPowerAbility([species.ability], dex)) score += 2;
   if (species.baseStats.spe >= 100) score += 2;
   if (species.bst >= 540) score += 2;
@@ -258,7 +218,6 @@ function scoreMemberForArchetype(
   const species = dex.getBattleProfile(member, format);
   if (!species) return 0;
 
-  const moves = member.moves.map(normalize);
   let score = 0;
 
   for (const wantedRole of archetype.desiredRoles) {
@@ -267,8 +226,8 @@ function scoreMemberForArchetype(
 
   if (archetype.wantsSpeed && (species.baseStats.spe >= 100 || roleSummary.roles.includes('speed-control'))) score += 3;
   if (archetype.wantsBulk && (roleSummary.roles.includes('physical-wall') || roleSummary.roles.includes('special-wall'))) score += 3;
-  if (archetype.wantsDisruption && (hasDisruptionUtility(member, dex) || hasTaggedMove(moves, disruptionMoves))) score += 3;
-  if (hasPriorityPressure(member, dex) || hasTaggedMove(moves, priorityMoves)) score += 2;
+  if (archetype.wantsDisruption && hasDisruptionUtility(member, dex)) score += 3;
+  if (hasPriorityPressure(member, dex)) score += 2;
   if (roleSummary.roles.includes('pivot')) score += 1;
 
   return score;
@@ -419,7 +378,8 @@ function evaluateThreatPressure(
       hasBulkyCheck = true;
     }
 
-    if (species.types.some((type) => dex.getTypeEffectiveness(type, threat.types) > 1 && !abilityCouldGrantImmunity(threat.abilities, type, dex))) {
+    const moveInfos = getMoveInfos(member, dex);
+    if (moveInfos.some((move) => move.category !== 'Status' && dex.getTypeEffectiveness(move.type, threat.types) > 1 && !abilityCouldGrantImmunity(threat.abilities, move.type, dex))) {
       hasOffensiveAnswer = true;
     }
   }
@@ -495,8 +455,8 @@ export function analyzeBssPlan(
 
   const speedControlRating = getSpeedControlRating(speed.fastestBaseSpeed, speed.hasSpeedControl);
   const teraDependency = mechanics.tera ? getTeraDependency(team, roles, dex) : 'not-applicable';
-  const priorityCount = team.members.filter((member) => hasPriorityPressure(member, dex) || hasTaggedMove(member.moves.map(normalize), priorityMoves)).length;
-  const disruptionCount = team.members.filter((member) => hasDisruptionUtility(member, dex) || hasTaggedMove(member.moves.map(normalize), disruptionMoves)).length;
+  const priorityCount = team.members.filter((member) => hasPriorityPressure(member, dex)).length;
+  const disruptionCount = team.members.filter((member) => hasDisruptionUtility(member, dex)).length;
 
   const legalPool = dex.listAvailableSpecies(team.format);
   const poolThreatNames = legalPool

@@ -1,68 +1,100 @@
 import type { PokemonSet, RoleSummary, SpeciesDexPort, Team, TeamRole } from '@pokemon/domain';
 
-const hazardSetterMoves = new Set(['stealth rock', 'spikes', 'toxic spikes', 'sticky web']);
-const hazardRemovalMoves = new Set(['defog', 'rapid spin', 'mortal spin', 'court change', 'tidy up']);
-const pivotMoves = new Set(['u-turn', 'volt switch', 'flip turn', 'teleport', 'parting shot', 'baton pass']);
-const setupMoves = new Set([
-  'swords dance',
-  'nasty plot',
-  'dragon dance',
-  'quiver dance',
-  'calm mind',
-  'bulk up',
-  'shell smash',
-  'agility',
-  'iron defense',
-  'trailblaze',
-]);
-const speedControlMoves = new Set(['tailwind', 'thunder wave', 'icy wind', 'trick room', 'electroweb']);
-const clericMoves = new Set(['heal bell', 'aromatherapy', 'wish']);
+type ResolvedMoveInfo = Exclude<ReturnType<SpeciesDexPort['getMove']>, null>;
+
+const fallbackHazardSetterMoves = new Set(['stealth rock', 'spikes', 'toxic spikes', 'sticky web']);
+const fallbackClericMoves = new Set(['heal bell', 'aromatherapy', 'wish']);
 
 function normalize(value: string | undefined): string {
   return (value ?? '').trim().toLowerCase();
 }
 
-function getMoveInfos(set: PokemonSet, dex: SpeciesDexPort) {
+function getMoveInfos(set: PokemonSet, dex: SpeciesDexPort): ResolvedMoveInfo[] {
   return set.moves
     .map((move) => dex.getMove(move))
-    .filter((move): move is NonNullable<ReturnType<SpeciesDexPort['getMove']>> => Boolean(move));
+    .filter((move): move is ResolvedMoveInfo => Boolean(move));
+}
+
+function isHazardSetterMoveInfo(move: ResolvedMoveInfo): boolean {
+  return ['stealthrock', 'spikes', 'toxicspikes', 'stickyweb'].includes(normalize(move.sideCondition));
+}
+
+function isHazardRemovalMoveInfo(move: ResolvedMoveInfo): boolean {
+  const desc = (move.shortDesc ?? '').toLowerCase();
+  return desc.includes('hazards') || desc.includes('spikes') || move.id === 'courtchange' || move.id === 'tidyup';
+}
+
+function isPivotMoveInfo(move: ResolvedMoveInfo): boolean {
+  const desc = (move.shortDesc ?? '').toLowerCase();
+  return Boolean(move.selfSwitch) || desc.includes('switches out') || move.id === 'batonpass';
+}
+
+function isSetupMoveInfo(move: ResolvedMoveInfo): boolean {
+  const boosts = Object.entries(move.boosts ?? {});
+  const hasPositiveBoost = boosts.some(([, value]) => value > 0);
+  const desc = (move.shortDesc ?? '').toLowerCase();
+
+  return (hasPositiveBoost && (move.category === 'Status' || move.target === 'self'))
+    || desc.includes("raises the user's attack")
+    || desc.includes("raises the user's special attack")
+    || desc.includes("raises the user's sp. atk")
+    || desc.includes("raises the user's speed")
+    || desc.includes("raises the user's defense")
+    || desc.includes("raises the user's sp. def");
+}
+
+function isSpeedControlMoveInfo(move: ResolvedMoveInfo): boolean {
+  const desc = (move.shortDesc ?? '').toLowerCase();
+  return move.status === 'par'
+    || move.id === 'tailwind'
+    || move.id === 'trickroom'
+    || move.id === 'electroweb'
+    || move.id === 'icywind'
+    || desc.includes("lowers the target's speed")
+    || desc.includes('paralyzes the target')
+    || desc.includes('slower pokemon move first')
+    || desc.includes("the user's side's speed is doubled");
+}
+
+function isClericMoveInfo(move: ResolvedMoveInfo): boolean {
+  const desc = (move.shortDesc ?? '').toLowerCase();
+  return fallbackClericMoves.has(normalize(move.name))
+    || desc.includes("cures the user's party")
+    || desc.includes('replacement');
 }
 
 function hasHazardSetterMove(set: PokemonSet, dex: SpeciesDexPort): boolean {
-  return getMoveInfos(set, dex).some((move) => ['stealthrock', 'spikes', 'toxicspikes', 'stickyweb'].includes(normalize(move.sideCondition)));
+  return getMoveInfos(set, dex).some(isHazardSetterMoveInfo);
 }
 
 function hasHazardRemovalMove(set: PokemonSet, dex: SpeciesDexPort): boolean {
-  return getMoveInfos(set, dex).some((move) => hazardRemovalMoves.has(normalize(move.name)) || (move.shortDesc ?? '').toLowerCase().includes('hazards'));
+  return getMoveInfos(set, dex).some(isHazardRemovalMoveInfo);
 }
 
 function hasPivotMove(set: PokemonSet, dex: SpeciesDexPort): boolean {
-  return getMoveInfos(set, dex).some((move) => Boolean(move.selfSwitch)) || set.moves.map(normalize).some((move) => pivotMoves.has(move));
+  return getMoveInfos(set, dex).some(isPivotMoveInfo);
 }
 
 function hasSetupMove(set: PokemonSet, dex: SpeciesDexPort): boolean {
-  return getMoveInfos(set, dex).some((move) => {
-    const boosts = Object.values(move.boosts ?? {});
-    return boosts.some((value) => value > 0) && move.category === 'Status';
-  }) || set.moves.map(normalize).some((move) => setupMoves.has(move));
+  return getMoveInfos(set, dex).some(isSetupMoveInfo);
 }
 
 function hasSpeedControlMove(set: PokemonSet, dex: SpeciesDexPort): boolean {
-  return getMoveInfos(set, dex).some((move) => move.status === 'par' || speedControlMoves.has(normalize(move.name))) || set.moves.map(normalize).some((move) => speedControlMoves.has(move));
+  return getMoveInfos(set, dex).some(isSpeedControlMoveInfo);
 }
 
 function hasClericMove(set: PokemonSet, dex: SpeciesDexPort): boolean {
-  return getMoveInfos(set, dex).some((move) => clericMoves.has(normalize(move.name))) || set.moves.map(normalize).some((move) => clericMoves.has(move));
+  return getMoveInfos(set, dex).some(isClericMoveInfo);
 }
 
-function getAbilityAdjustedOffense(stat: number, ability: string, item: string): number {
-  const id = normalize(ability);
+function getAbilityAdjustedOffense(stat: number, ability: string, item: string, dex: SpeciesDexPort): number {
   const heldItem = normalize(item);
+  const abilityText = `${dex.getAbility(ability)?.shortDesc ?? ''} ${dex.getAbility(ability)?.desc ?? ''}`.toLowerCase();
 
-  if (id === 'huge power' || id === 'pure power') return stat * 2;
-  if (id === 'gorilla tactics' || heldItem === 'choice band' || heldItem === 'choice specs') return stat * 1.5;
-  if (['tough claws', 'adaptability', 'sheer force', 'supreme overlord', 'transistor', 'dragon\'s maw', 'fairy aura', 'dark aura'].includes(id)) return stat * 1.2;
-  if (id === 'protosynthesis' || id === 'quark drive') return stat * 1.15;
+  if (abilityText.includes('attack is doubled') || abilityText.includes('special attack is doubled')) return stat * 2;
+  if (heldItem === 'choice band' || heldItem === 'choice specs' || abilityText.includes('offensive stat is multiplied by 1.5') || abilityText.includes('power multiplied by 1.5')) return stat * 1.5;
+  if (abilityText.includes('power multiplied by 1.3') || abilityText.includes('power multiplied by 1.33')) return stat * 1.2;
+  if (abilityText.includes('attack is raised by 1 stage') || abilityText.includes('special attack is raised by 1 stage') || abilityText.includes('raises its attack by 1 stage') || abilityText.includes('raises its special attack by 1 stage')) return stat * 1.15;
 
   return stat;
 }
@@ -73,7 +105,7 @@ export function detectRolesForSet(set: PokemonSet, dex: SpeciesDexPort, format?:
   const item = normalize(set.item);
   const profile = dex.getBattleProfile(set, format);
 
-  if (hasHazardSetterMove(set, dex) || moveIds.some((move) => hazardSetterMoves.has(move))) roles.add('hazard-setter');
+  if (hasHazardSetterMove(set, dex) || moveIds.some((move) => fallbackHazardSetterMoves.has(move))) roles.add('hazard-setter');
   if (hasHazardRemovalMove(set, dex)) roles.add('hazard-removal');
   if (hasPivotMove(set, dex)) roles.add('pivot');
   if (hasSetupMove(set, dex)) roles.add('setup-sweeper');
@@ -83,8 +115,8 @@ export function detectRolesForSet(set: PokemonSet, dex: SpeciesDexPort, format?:
   if (moveIds[0] === 'stealth rock' || moveIds[0] === 'spikes') roles.add('lead');
 
   if (profile) {
-    const physicalPower = getAbilityAdjustedOffense(profile.baseStats.atk, profile.ability, set.item ?? '');
-    const specialPower = getAbilityAdjustedOffense(profile.baseStats.spa, profile.ability, set.item ?? '');
+    const physicalPower = getAbilityAdjustedOffense(profile.baseStats.atk, profile.ability, set.item ?? '', dex);
+    const specialPower = getAbilityAdjustedOffense(profile.baseStats.spa, profile.ability, set.item ?? '', dex);
 
     if (physicalPower >= specialPower) {
       roles.add('physical-attacker');
