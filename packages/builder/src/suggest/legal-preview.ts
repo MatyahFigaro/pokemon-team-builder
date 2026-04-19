@@ -6,12 +6,14 @@ interface PreviewOptions {
   roleHint?: PreviewRoleHint;
 }
 
-const SETUP_MOVE_IDS = new Set(['dragondance', 'swordsdance', 'nastyplot', 'calmmind', 'quiverdance', 'bulkup', 'curse', 'agility', 'rockpolish', 'trailblaze']);
+const PHYSICAL_SETUP_MOVE_IDS = new Set(['dragondance', 'swordsdance', 'bulkup', 'curse']);
+const SPECIAL_SETUP_MOVE_IDS = new Set(['nastyplot', 'calmmind', 'quiverdance']);
+const SPEED_SETUP_MOVE_IDS = new Set(['agility', 'rockpolish', 'trailblaze']);
 const RECOVERY_MOVE_IDS = new Set(['roost', 'recover', 'slackoff', 'softboiled', 'moonlight', 'morningsun', 'synthesis', 'shoreup', 'milkdrink', 'rest']);
 const DISRUPTION_MOVE_IDS = new Set(['taunt', 'encore', 'haze', 'clearsmog', 'thunderwave', 'willowisp', 'yawn', 'roar', 'whirlwind', 'dragontail', 'trickroom']);
 const HAZARD_CONTROL_MOVE_IDS = new Set(['defog', 'rapidspin', 'mortalspin', 'courtchange']);
 const PIVOT_MOVE_IDS = new Set(['uturn', 'voltswitch', 'partingshot', 'flipturn', 'teleport', 'chillyreception', 'batonpass']);
-const PRIORITY_MOVE_IDS = new Set(['extremespeed', 'shadowSneak', 'suckerpunch', 'grassyglide', 'iceshard', 'machpunch', 'aquajet', 'bulletpunch', 'vacuumwave'].map((value) => value.toLowerCase()));
+const PRIORITY_MOVE_IDS = new Set(['extremespeed', 'shadowsneak', 'suckerpunch', 'grassyglide', 'iceshard', 'machpunch', 'aquajet', 'bulletpunch', 'vacuumwave']);
 const GENERIC_ITEM_POOL = ['Leftovers', 'Sitrus Berry', 'Lum Berry', 'Focus Sash', 'Life Orb', 'Assault Vest', 'Choice Scarf', 'Choice Band', 'Choice Specs', 'Rocky Helmet', 'Air Balloon', 'Mental Herb'];
 const COVERAGE_TYPE_PRIORITY = ['Ground', 'Ice', 'Fire', 'Electric', 'Fighting', 'Fairy', 'Ghost', 'Dark', 'Steel', 'Water'];
 
@@ -86,19 +88,33 @@ function chooseAbility(speciesName: string, dex: SpeciesDexPort): string {
     .sort((left, right) => (dex.getAbility(right)?.rating ?? 0) - (dex.getAbility(left)?.rating ?? 0))[0] ?? species.abilities[0] ?? '';
 }
 
-function getPreferredCategory(speciesName: string, dex: SpeciesDexPort): 'Physical' | 'Special' {
-  const species = dex.getSpecies(speciesName);
-  if (!species) return 'Physical';
-  return species.baseStats.spa > species.baseStats.atk ? 'Special' : 'Physical';
+function isLowQualityFallbackMove(move: MoveInfo): boolean {
+  const text = `${move.shortDesc ?? ''}`.toLowerCase();
+
+  return move.id === 'gigaimpact'
+    || move.id === 'hyperbeam'
+    || move.id === 'focuspunch'
+    || move.id === 'steelbeam'
+    || text.includes('must recharge')
+    || text.includes('charges, then attacks')
+    || text.includes('fails unless')
+    || text.includes('if hit by an attack')
+    || text.includes('the user faints')
+    || text.includes('the user loses 50% of its max hp')
+    || text.includes('harshly lowers the user');
 }
 
 function scoreOffensiveMove(move: MoveInfo, speciesName: string, dex: SpeciesDexPort, preferredCategory: 'Physical' | 'Special'): number {
   const species = dex.getSpecies(speciesName);
   if (!species || move.category === 'Status') return -999;
+  if (isLowQualityFallbackMove(move)) return -120;
 
   let score = move.basePower ?? 0;
-  if (species.types.includes(move.type)) score += 24;
-  if (move.category === preferredCategory) score += 12;
+  if (species.types.includes(move.type)) score += 28;
+  else if (move.type === 'Normal') score -= 30;
+  if (move.category === preferredCategory) score += 18;
+  else score -= 28;
+  if ((move.basePower ?? 0) < 60) score -= 8;
   if (move.priority > 0) score += 18 + move.priority * 5;
   if (move.selfSwitch) score += 8;
 
@@ -107,6 +123,12 @@ function scoreOffensiveMove(move: MoveInfo, speciesName: string, dex: SpeciesDex
 
   const text = `${move.shortDesc ?? ''}`.toLowerCase();
   if (text.includes('must recharge') || text.includes('charges, then attacks')) score -= 18;
+  if (text.includes('recoil')) score -= 18;
+  if (text.includes('uses the target') && text.includes('attack stat')) score -= 22;
+  if (text.includes('locks the user') || text.includes('lasts 2-3 turns')) score -= 10;
+  if (text.includes('the user faints') || text.includes('harshly lowers the user')) score -= 14;
+  if (text.includes('lows the user') || text.includes('lowers the user')) score -= 6;
+
   return score;
 }
 
@@ -124,37 +146,84 @@ function getMovesFromPool(learnableMoves: MoveInfo[], pool: Set<string>): MoveIn
   return dedupeMoveNames(learnableMoves.filter((move) => pool.has(move.id)));
 }
 
+function isSetupMoveForCategory(move: MoveInfo, preferredCategory: 'Physical' | 'Special'): boolean {
+  if (move.category !== 'Status') return false;
+
+  if (SPEED_SETUP_MOVE_IDS.has(move.id)) return true;
+  if (preferredCategory === 'Physical' && PHYSICAL_SETUP_MOVE_IDS.has(move.id)) return true;
+  if (preferredCategory === 'Special' && SPECIAL_SETUP_MOVE_IDS.has(move.id)) return true;
+
+  const boosts = move.boosts ?? {};
+  if ((boosts.spe ?? 0) > 0) return true;
+  if (preferredCategory === 'Physical' && (boosts.atk ?? 0) > 0) return true;
+  if (preferredCategory === 'Special' && (boosts.spa ?? 0) > 0) return true;
+
+  return false;
+}
+
+function getPreferredCategory(speciesName: string, dex: SpeciesDexPort): 'Physical' | 'Special' {
+  const species = dex.getSpecies(speciesName);
+  if (!species) return 'Physical';
+
+  const learnableMoves = dex.getLearnableMoves(speciesName);
+  const scoreCategory = (category: 'Physical' | 'Special'): number => {
+    const offensiveStat = category === 'Special' ? species.baseStats.spa : species.baseStats.atk;
+    const bestMoves = learnableMoves
+      .filter((move) => move.category === category && (move.basePower ?? 0) >= 60)
+      .sort((left, right) => scoreOffensiveMove(right, speciesName, dex, category) - scoreOffensiveMove(left, speciesName, dex, category))
+      .slice(0, 3)
+      .reduce((sum, move) => sum + Math.max(0, scoreOffensiveMove(move, speciesName, dex, category)), 0);
+
+    return offensiveStat * 2 + bestMoves;
+  };
+
+  return scoreCategory('Special') > scoreCategory('Physical') ? 'Special' : 'Physical';
+}
+
+function getMoveInfos(moves: string[], dex: SpeciesDexPort): MoveInfo[] {
+  return moves
+    .map((move) => dex.getMove(move))
+    .filter((move): move is MoveInfo => Boolean(move));
+}
+
+function shouldUseBulkySpread(
+  speciesName: string,
+  dex: SpeciesDexPort,
+  moves: string[],
+  options: PreviewOptions = {},
+): boolean {
+  const species = dex.getSpecies(speciesName);
+  if (!species) return false;
+
+  const moveInfos = getMoveInfos(moves, dex);
+  const hasNaturalBulk = species.baseStats.hp + Math.max(species.baseStats.def, species.baseStats.spd) >= 195;
+  const hasSupportUtility = moveInfos.some((move) => RECOVERY_MOVE_IDS.has(move.id) || DISRUPTION_MOVE_IDS.has(move.id) || HAZARD_CONTROL_MOVE_IDS.has(move.id));
+
+  return hasNaturalBulk && (options.roleHint === 'bulky' || options.roleHint === 'hazard-control' || hasSupportUtility || species.baseStats.spe < 80);
+}
+
 function buildMoves(speciesName: string, dex: SpeciesDexPort, options: PreviewOptions = {}): string[] {
   const species = dex.getSpecies(speciesName);
   if (!species) return [];
 
   const preferredCategory = getPreferredCategory(speciesName, dex);
   const learnableMoves = dex.getLearnableMoves(speciesName);
-  const damagingMoves = learnableMoves.filter((move) => move.category !== 'Status' && (move.basePower ?? 0) >= 40);
-  const stabMoves = dedupeMoveNames(
-    damagingMoves
-      .filter((move) => species.types.includes(move.type))
-      .sort((left, right) => scoreOffensiveMove(right, speciesName, dex, preferredCategory) - scoreOffensiveMove(left, speciesName, dex, preferredCategory)),
+  const sameCategoryDamagingMoves = learnableMoves.filter(
+    (move) => move.category === preferredCategory && (move.basePower ?? 0) >= 55 && !isLowQualityFallbackMove(move),
   );
-  const coverageMoves = dedupeMoveNames(
-    damagingMoves
-      .filter((move) => !species.types.includes(move.type))
-      .sort((left, right) => scoreOffensiveMove(right, speciesName, dex, preferredCategory) - scoreOffensiveMove(left, speciesName, dex, preferredCategory)),
-  );
+  const damagingMoves = (sameCategoryDamagingMoves.length
+    ? sameCategoryDamagingMoves
+    : learnableMoves.filter((move) => move.category !== 'Status' && (move.basePower ?? 0) >= 60 && !isLowQualityFallbackMove(move)))
+    .sort((left, right) => scoreOffensiveMove(right, speciesName, dex, preferredCategory) - scoreOffensiveMove(left, speciesName, dex, preferredCategory));
 
-  const bulky = species.baseStats.hp + Math.max(species.baseStats.def, species.baseStats.spd) >= 185;
-  const offensive = Math.max(species.baseStats.atk, species.baseStats.spa) >= 110;
-  const utilityMoves: MoveInfo[] = [];
-
-  if (options.roleHint === 'hazard-control') utilityMoves.push(...getMovesFromPool(learnableMoves, HAZARD_CONTROL_MOVE_IDS));
-  if (options.roleHint === 'disruption') utilityMoves.push(...getMovesFromPool(learnableMoves, DISRUPTION_MOVE_IDS));
-  if (options.roleHint === 'pivot') utilityMoves.push(...getMovesFromPool(learnableMoves, PIVOT_MOVE_IDS));
-  if (options.roleHint === 'speed') utilityMoves.push(...getMovesFromPool(learnableMoves, SETUP_MOVE_IDS), ...getMovesFromPool(learnableMoves, PRIORITY_MOVE_IDS));
-
-  if (offensive) utilityMoves.push(...getMovesFromPool(learnableMoves, SETUP_MOVE_IDS));
-  if (bulky) utilityMoves.push(...getMovesFromPool(learnableMoves, RECOVERY_MOVE_IDS), ...getMovesFromPool(learnableMoves, DISRUPTION_MOVE_IDS));
-  if (bulky || species.baseStats.spe >= 80) utilityMoves.push(...getMovesFromPool(learnableMoves, PIVOT_MOVE_IDS));
-  if (bulky) utilityMoves.push(...getMovesFromPool(learnableMoves, HAZARD_CONTROL_MOVE_IDS));
+  const stabMoves = dedupeMoveNames(damagingMoves.filter((move) => species.types.includes(move.type)));
+  const coverageMoves = dedupeMoveNames(damagingMoves.filter((move) => !species.types.includes(move.type)));
+  const recoveryMoves = getMovesFromPool(learnableMoves, RECOVERY_MOVE_IDS);
+  const disruptionMoves = getMovesFromPool(learnableMoves, DISRUPTION_MOVE_IDS);
+  const hazardControlMoves = getMovesFromPool(learnableMoves, HAZARD_CONTROL_MOVE_IDS);
+  const pivotMoves = getMovesFromPool(learnableMoves, PIVOT_MOVE_IDS);
+  const priorityMoves = getMovesFromPool(learnableMoves, PRIORITY_MOVE_IDS);
+  const setupMoves = dedupeMoveNames(learnableMoves.filter((move) => isSetupMoveForCategory(move, preferredCategory)));
 
   const chosen: MoveInfo[] = [];
   const pushUnique = (move?: MoveInfo) => {
@@ -163,15 +232,28 @@ function buildMoves(speciesName: string, dex: SpeciesDexPort, options: PreviewOp
     chosen.push(move);
   };
 
-  pushUnique(stabMoves[0]);
-  pushUnique(stabMoves[1] ?? coverageMoves[0]);
+  pushUnique(stabMoves[0] ?? damagingMoves[0]);
+  pushUnique(stabMoves[1] ?? coverageMoves[0] ?? damagingMoves[1]);
 
-  for (const move of dedupeMoveNames(utilityMoves)) {
-    if (chosen.length >= 4) break;
-    pushUnique(move);
+  if (options.roleHint === 'hazard-control') pushUnique(hazardControlMoves[0]);
+  if (options.roleHint === 'disruption') pushUnique(disruptionMoves[0]);
+  if (options.roleHint === 'pivot') pushUnique(pivotMoves[0]);
+  if (options.roleHint === 'speed') {
+    pushUnique(setupMoves.find((move) => (move.boosts?.spe ?? 0) > 0) ?? priorityMoves[0] ?? setupMoves[0]);
   }
 
-  for (const move of [...stabMoves, ...coverageMoves, ...learnableMoves]) {
+  const wantsBulkyUtility = shouldUseBulkySpread(speciesName, dex, chosen.map((move) => move.name), options);
+  if (wantsBulkyUtility) {
+    pushUnique(recoveryMoves[0]);
+    pushUnique(disruptionMoves[0]);
+    pushUnique(pivotMoves[0]);
+  } else {
+    pushUnique(setupMoves[0]);
+    pushUnique(priorityMoves[0]);
+    pushUnique(pivotMoves[0]);
+  }
+
+  for (const move of [...stabMoves.slice(1), ...coverageMoves.slice(1), ...damagingMoves, ...recoveryMoves, ...disruptionMoves, ...setupMoves, ...pivotMoves, ...hazardControlMoves]) {
     if (chosen.length >= 4) break;
     pushUnique(move);
   }
@@ -183,22 +265,24 @@ function buildItemOptions(speciesName: string, dex: SpeciesDexPort, moves: strin
   const species = dex.getSpecies(speciesName);
   if (!species) return GENERIC_ITEM_POOL;
 
-  const offensive = Math.max(species.baseStats.atk, species.baseStats.spa) >= 110;
-  const bulky = species.baseStats.hp + Math.max(species.baseStats.def, species.baseStats.spd) >= 185;
-  const fast = species.baseStats.spe >= 100;
   const preferredCategory = getPreferredCategory(speciesName, dex);
-  const moveIds = new Set(moves.map((move) => toId(move)));
+  const moveInfos = getMoveInfos(moves, dex);
+  const damagingCount = moveInfos.filter((move) => move.category !== 'Status').length;
+  const statusCount = moveInfos.length - damagingCount;
+  const bulky = shouldUseBulkySpread(speciesName, dex, moves, options);
+  const fast = species.baseStats.spe >= 100;
+  const offensive = Math.max(species.baseStats.atk, species.baseStats.spa) >= 110;
+  const hasSetup = moveInfos.some((move) => isSetupMoveForCategory(move, preferredCategory));
+  const hasRecovery = moveInfos.some((move) => RECOVERY_MOVE_IDS.has(move.id));
 
   const items: string[] = [];
   if (species.requiredItem) items.push(species.requiredItem);
-  if (bulky) items.push('Leftovers', 'Sitrus Berry', 'Rocky Helmet');
-  if (fast || options.roleHint === 'speed') items.push('Choice Scarf', 'Focus Sash');
-  if (moveIds.has('dragondance') || moveIds.has('swordsdance') || moveIds.has('quiverdance') || moveIds.has('nastyplot') || moveIds.has('calmmind')) {
-    items.push('Lum Berry', 'Life Orb', 'Leftovers');
-  }
-  if (offensive && preferredCategory === 'Physical') items.push('Choice Band');
-  if (offensive && preferredCategory === 'Special') items.push('Choice Specs');
-  if (bulky && !moveIds.has('recover') && !moveIds.has('roost')) items.push('Assault Vest');
+  if (bulky || hasRecovery || options.roleHint === 'hazard-control') items.push('Leftovers', 'Sitrus Berry', 'Rocky Helmet');
+  if (fast || options.roleHint === 'speed') items.push('Focus Sash', 'Choice Scarf');
+  if (hasSetup) items.push('Lum Berry', 'Life Orb');
+  if (offensive && statusCount === 0 && damagingCount >= 3 && preferredCategory === 'Physical') items.push('Choice Band');
+  if (offensive && statusCount === 0 && damagingCount >= 3 && preferredCategory === 'Special') items.push('Choice Specs');
+  if (bulky && statusCount === 0) items.push('Assault Vest');
 
   return Array.from(new Set([...items, ...GENERIC_ITEM_POOL]));
 }
@@ -208,10 +292,11 @@ function buildNature(speciesName: string, dex: SpeciesDexPort, moves: string[], 
   if (!species) return 'Serious';
 
   const preferredCategory = getPreferredCategory(speciesName, dex);
-  const bulky = options.roleHint === 'bulky'
-    || options.roleHint === 'hazard-control'
-    || species.baseStats.hp + Math.max(species.baseStats.def, species.baseStats.spd) >= 190;
-  const wantsSpeed = options.roleHint === 'speed' || species.baseStats.spe >= 95 || moves.some((move) => SETUP_MOVE_IDS.has(toId(move)));
+  const moveInfos = getMoveInfos(moves, dex);
+  const bulky = shouldUseBulkySpread(speciesName, dex, moves, options);
+  const wantsSpeed = options.roleHint === 'speed'
+    || species.baseStats.spe >= 95
+    || moveInfos.some((move) => isSetupMoveForCategory(move, preferredCategory) || PRIORITY_MOVE_IDS.has(move.id));
 
   if (bulky) {
     if (species.baseStats.def >= species.baseStats.spd) return preferredCategory === 'Special' ? 'Bold' : 'Impish';
@@ -227,9 +312,7 @@ function buildEvs(speciesName: string, dex: SpeciesDexPort, moves: string[], opt
   if (!species) return undefined;
 
   const preferredCategory = getPreferredCategory(speciesName, dex);
-  const bulky = options.roleHint === 'bulky'
-    || options.roleHint === 'hazard-control'
-    || species.baseStats.hp + Math.max(species.baseStats.def, species.baseStats.spd) >= 190;
+  const bulky = shouldUseBulkySpread(speciesName, dex, moves, options);
 
   if (bulky) {
     if (species.baseStats.def >= species.baseStats.spd) return { hp: 252, def: 252, spd: 4 };
@@ -246,6 +329,32 @@ function buildIvs(speciesName: string, dex: SpeciesDexPort): Partial<StatsTable>
 
 function isPromiseLike<T>(value: T | Promise<T>): value is Promise<T> {
   return typeof (value as Promise<T> | undefined)?.then === 'function';
+}
+
+function passesPreviewQualityGate(speciesName: string, moves: string[], dex: SpeciesDexPort): boolean {
+  const species = dex.getSpecies(speciesName);
+  if (!species) return false;
+
+  const preferredCategory = getPreferredCategory(speciesName, dex);
+  const moveInfos = getMoveInfos(moves, dex);
+  const damagingMoves = moveInfos.filter((move) => move.category !== 'Status');
+  const badMoves = moveInfos.filter((move) => isLowQualityFallbackMove(move));
+  const sameCategoryHits = damagingMoves.filter((move) => move.category === preferredCategory);
+  const stabHits = damagingMoves.filter((move) => species.types.includes(move.type));
+  const weakCoverage = damagingMoves.filter((move) => !species.types.includes(move.type) && move.type === 'Normal');
+  const averageScore = damagingMoves.length
+    ? damagingMoves.reduce((sum, move) => sum + scoreOffensiveMove(move, speciesName, dex, preferredCategory), 0) / damagingMoves.length
+    : 0;
+
+  if (moves.length < 4) return false;
+  if (badMoves.length > 0) return false;
+  if (weakCoverage.length > 0) return false;
+  if (sameCategoryHits.length < 1) return false;
+  if (stabHits.length < 1) return false;
+  if (averageScore < 55) return false;
+  if (damagingMoves.length < 2 && !shouldUseBulkySpread(speciesName, dex, moves)) return false;
+
+  return true;
 }
 
 function formatSetPreview(set: PokemonSet, format?: FormatId): string {
@@ -274,7 +383,7 @@ export function getCompetitiveSetPreview(
   if (!species) return null;
 
   const moves = buildMoves(species.name, dex, options);
-  if (moves.length === 0) return null;
+  if (moves.length === 0 || !passesPreviewQualityGate(species.name, moves, dex)) return null;
 
   const ability = chooseAbility(species.name, dex);
   const nature = buildNature(species.name, dex, moves, options);
