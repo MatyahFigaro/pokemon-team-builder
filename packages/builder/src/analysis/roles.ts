@@ -100,7 +100,7 @@ function getAbilityAdjustedOffense(stat: number, ability: string, item: string, 
 }
 
 export function detectRolesForSet(set: PokemonSet, dex: SpeciesDexPort, format?: string): TeamRole[] {
-  const roles = new Set<TeamRole>();
+  const roles = new Set<TeamRole>(set.roles ?? []);
   const moveIds = set.moves.map(normalize);
   const item = normalize(set.item);
   const profile = dex.getBattleProfile(set, format);

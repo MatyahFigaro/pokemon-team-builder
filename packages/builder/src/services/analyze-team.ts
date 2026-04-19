@@ -2,11 +2,12 @@ import type { AnalysisReport, SpeciesDexPort, Team, ValidationPort } from '@poke
 import { preloadUsageAnalytics } from '@pokemon/storage';
 
 import { analyzeBssPlan } from '../analysis/bss.js';
-import { summarizeRoles } from '../analysis/roles.js';
+import { detectRolesForSet, summarizeRoles } from '../analysis/roles.js';
 import { analyzeSpeed } from '../analysis/speed.js';
 import { analyzeSynergy } from '../analysis/synergy.js';
 import { analyzeWeaknesses } from '../analysis/weaknesses.js';
 import { computeStructuralScore } from '../scoring/structural.js';
+import { getCompetitiveSet, type PreviewRoleHint } from '../suggest/legal-preview.js';
 import { buildCompletionSuggestions } from '../suggest/complete.js';
 import { buildPatchSuggestions } from '../suggest/patch.js';
 
@@ -15,9 +16,65 @@ export interface AnalyzeTeamDeps {
   validator: ValidationPort;
 }
 
+function getRoleHintForMember(member: Team['members'][number], dex: SpeciesDexPort, format: string): PreviewRoleHint {
+  const roles = new Set([...(member.roles ?? []), ...detectRolesForSet(member, dex, format)]);
+
+  if (roles.has('hazard-removal') || roles.has('hazard-setter')) return 'hazard-control';
+  if (roles.has('pivot')) return 'pivot';
+  if (roles.has('speed-control') || roles.has('scarfer') || roles.has('lead')) return 'speed';
+  if (roles.has('physical-wall') || roles.has('special-wall') || roles.has('cleric')) return 'bulky';
+  if (roles.has('setup-sweeper') || roles.has('wallbreaker') || roles.has('physical-attacker') || roles.has('special-attacker')) return 'offense';
+  return 'default';
+}
+
+function hasStatSpread(stats: Record<string, number> | undefined): boolean {
+  return Boolean(stats && Object.values(stats).some((value) => typeof value === 'number' && value > 0));
+}
+
+function mergeMoves(current: string[], fallback: string[]): string[] {
+  return [...current, ...fallback]
+    .map((move) => String(move).trim())
+    .filter(Boolean)
+    .filter((move, index, array) => array.findIndex((candidate) => candidate.toLowerCase() === move.toLowerCase()) === index)
+    .slice(0, 4);
+}
+
+function shouldHydrateMember(member: Team['members'][number]): boolean {
+  return !member.item
+    || !member.ability
+    || !member.nature
+    || member.moves.length < 4
+    || !hasStatSpread(member.evs as Record<string, number> | undefined);
+}
+
+function hydrateTeamWithReferenceSets(team: Team, deps: AnalyzeTeamDeps): Team {
+  return {
+    ...team,
+    members: team.members.map((member) => {
+      if (!shouldHydrateMember(member)) return member;
+
+      const reference = getCompetitiveSet(member.species, team.format, deps.dex, deps.validator, {
+        roleHint: getRoleHintForMember(member, deps.dex, team.format),
+      });
+
+      if (!reference) return member;
+
+      return {
+        ...reference,
+        ...member,
+        moves: mergeMoves(member.moves, reference.moves),
+        evs: hasStatSpread(member.evs as Record<string, number> | undefined) ? member.evs : reference.evs,
+        ivs: hasStatSpread(member.ivs as Record<string, number> | undefined) ? member.ivs : reference.ivs,
+        roles: Array.from(new Set([...(reference.roles ?? []), ...(member.roles ?? [])])),
+      };
+    }),
+  };
+}
+
 export async function analyzeTeam(team: Team, deps: AnalyzeTeamDeps): Promise<AnalysisReport> {
-  const validation = await deps.validator.validateTeam(team, team.format);
-  const workingTeam = validation.normalizedTeam ?? team;
+  const referenceAwareTeam = hydrateTeamWithReferenceSets(team, deps);
+  const validation = await deps.validator.validateTeam(referenceAwareTeam, team.format);
+  const workingTeam = validation.normalizedTeam ?? referenceAwareTeam;
 
   await preloadUsageAnalytics(workingTeam.format);
 

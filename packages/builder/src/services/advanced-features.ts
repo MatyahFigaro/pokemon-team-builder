@@ -1,5 +1,5 @@
 import type { PokemonSet, SpeciesDexPort, Suggestion, Team, ValidationPort } from '@pokemon/domain';
-import { getSpeciesUsage, getTopUsageNames, getTopUsageThreatNames, getUsageAnalyticsForFormat, getUsageWeight, preloadUsageAnalytics } from '@pokemon/storage';
+import { getSpeciesUsage, getTopUsageNames, getTopUsageThreatNames, getUsageAnalyticsForFormat, getUsageWeight, listManualSets, preloadUsageAnalytics } from '@pokemon/storage';
 
 import { summarizeRoles } from '../analysis/roles.js';
 import { getCompetitiveSet, getCompetitiveSetPreview, type PreviewRoleHint } from '../suggest/legal-preview.js';
@@ -725,6 +725,7 @@ export async function buildWithConstraints(constraints: BuildConstraints, deps: 
   const missingRoles = inferMissingRolesFromAnchors(seedTeam, report, deps.dex);
   const existing = new Set(seedTeam.members.map((member) => toId(member.species)));
   const available = deps.dex.listAvailableSpecies(constraints.format);
+  const manualSpecies = new Set(listManualSets({ format: constraints.format }).map((record) => toId(record.species || record.set.species)));
 
   const recommendations = available
     .filter((species) => !existing.has(toId(species.name)))
@@ -774,6 +775,11 @@ export async function buildWithConstraints(constraints: BuildConstraints, deps: 
         style: constraints.style,
       });
       if (preview) score += 3;
+
+      if (manualSpecies.has(toId(species.name))) {
+        score += 5;
+        reasons.push('has a curated manual set available for this format');
+      }
 
       return {
         species: species.name,
