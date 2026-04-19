@@ -2818,6 +2818,80 @@
           "spe": 31
         }
       }
+    },
+    {
+      "id": "gen9championsbssregma::tyranitar::sitrusberry::sandstream::careful::notera::hp32-spd32-spe2::atk31-def31-hp31-spa31-spd31-spe31::crunch-rocktomb-stealthrock-thunderwave::noroles::nostyles::default",
+      "format": "gen9championsbssregma",
+      "species": "Tyranitar",
+      "source": "clipboard",
+      "createdAt": "2026-04-19T19:32:47.329Z",
+      "updatedAt": "2026-04-19T19:32:47.329Z",
+      "set": {
+        "species": "Tyranitar",
+        "item": "Sitrus Berry",
+        "ability": "sandstream",
+        "nature": "careful",
+        "level": 50,
+        "moves": [
+          "Stealth Rock",
+          "Thunder Wave",
+          "Rock Tomb",
+          "Crunch"
+        ],
+        "evs": {
+          "hp": 32,
+          "atk": 0,
+          "def": 0,
+          "spa": 0,
+          "spd": 32,
+          "spe": 2
+        },
+        "ivs": {
+          "hp": 31,
+          "atk": 31,
+          "def": 31,
+          "spa": 31,
+          "spd": 31,
+          "spe": 31
+        }
+      }
+    },
+    {
+      "id": "gen9championsbssregma::tyranitar::meganiumite::sandstream::jolly::notera::atk32-spd2-spe32::atk31-def31-hp31-spa31-spd31-spe31::crunch-dragondance-earthquake-rockblast::noroles::nostyles::default",
+      "format": "gen9championsbssregma",
+      "species": "Tyranitar",
+      "source": "clipboard",
+      "createdAt": "2026-04-19T19:32:47.329Z",
+      "updatedAt": "2026-04-19T19:32:47.329Z",
+      "set": {
+        "species": "Tyranitar",
+        "item": "Meganiumite",
+        "ability": "sandstream",
+        "nature": "jolly",
+        "level": 50,
+        "moves": [
+          "Dragon Dance",
+          "Rock Blast",
+          "Crunch",
+          "Earthquake"
+        ],
+        "evs": {
+          "hp": 0,
+          "atk": 32,
+          "def": 0,
+          "spa": 0,
+          "spd": 2,
+          "spe": 32
+        },
+        "ivs": {
+          "hp": 31,
+          "atk": 31,
+          "def": 31,
+          "spa": 31,
+          "spd": 31,
+          "spe": 31
+        }
+      }
     }
   ]
 }

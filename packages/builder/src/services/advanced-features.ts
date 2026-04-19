@@ -109,6 +109,20 @@ const BUILD_RECOVERY_MOVES = ['Recover', 'Roost', 'Slack Off', 'Soft-Boiled', 'M
 const BUILD_SUPPORT_MOVES = ['Will-O-Wisp', 'Thunder Wave', 'Yawn', 'Encore', 'Taunt', 'Trick', 'Haze', 'Roar', 'Whirlwind', 'Dragon Tail', 'Trick Room'];
 const BUILD_PRIORITY_MOVES = ['Extreme Speed', 'Sucker Punch', 'Aqua Jet', 'Ice Shard', 'Mach Punch', 'Bullet Punch', 'Shadow Sneak', 'Vacuum Wave'];
 
+function hasConfiguredHazardMove(set: Pick<PokemonSet, 'moves'> | undefined): boolean {
+  return (set?.moves ?? []).some((move) => BUILD_HAZARD_MOVES.some((hazard) => toId(hazard) === toId(move)));
+}
+
+function getHazardTagsFromPreview(preview?: string | null): string[] {
+  if (!preview) return [];
+  const movesSection = preview.split('Moves:')[1];
+  if (!movesSection) return [];
+
+  const moveIds = movesSection.split('/').map((move) => toId(move));
+  const hazards = BUILD_HAZARD_MOVES.filter((move) => moveIds.includes(toId(move)));
+  return hazards.length ? ['hazard', ...hazards.map((move) => `hazard:${toId(move)}`)] : [];
+}
+
 interface ClassicTypeCore {
   name: string;
   types: string[];
@@ -928,7 +942,12 @@ function getMissingAnchorTypes(seedTeam: Team, dex: SpeciesDexPort): string[] {
   return dex.listTypes().filter((type) => !presentTypes.has(type));
 }
 
-function selectDiverseRecommendations(candidates: RankedBuildCandidate[], limit: number, maxMegaCount = Number.POSITIVE_INFINITY): BuildRecommendation[] {
+function selectDiverseRecommendations(
+  candidates: RankedBuildCandidate[],
+  limit: number,
+  maxMegaCount = Number.POSITIVE_INFINITY,
+  maxHazardCount = 1,
+): BuildRecommendation[] {
   const remaining = [...candidates];
   const selected: RankedBuildCandidate[] = [];
   const typeCounts = new Map<string, number>();
@@ -951,6 +970,7 @@ function selectDiverseRecommendations(candidates: RankedBuildCandidate[], limit:
     adjustment -= Math.max(0, repeatedTags.length - 1) * 3;
 
     if (candidate.tags.includes('mega') && (tagCounts.get('mega') ?? 0) >= maxMegaCount) adjustment -= 1000;
+    if (candidate.tags.includes('hazard') && (tagCounts.get('hazard') ?? 0) >= maxHazardCount) adjustment -= 1000;
 
     if (candidate.types.some((type) => (typeCounts.get(type) ?? 0) === 0)) adjustment += 5;
     if (candidate.tags.some((tag) => (tagCounts.get(tag) ?? 0) === 0)) adjustment += 4;
@@ -967,6 +987,9 @@ function selectDiverseRecommendations(candidates: RankedBuildCandidate[], limit:
 
     const next = remaining.shift();
     if (!next) break;
+
+    if (next.tags.includes('mega') && (tagCounts.get('mega') ?? 0) >= maxMegaCount) continue;
+    if (next.tags.includes('hazard') && (tagCounts.get('hazard') ?? 0) >= maxHazardCount) continue;
 
     selected.push(next);
     for (const type of next.types) typeCounts.set(type, (typeCounts.get(type) ?? 0) + 1);
@@ -1007,7 +1030,9 @@ export async function buildWithConstraints(constraints: BuildConstraints, deps: 
     const species = deps.dex.getSpecies(member.species);
     return species ? isMegaSpecies(species, deps.dex) : false;
   }).length;
+  const hazardAnchors = seedTeam.members.filter((member) => hasConfiguredHazardMove(member)).length;
   const maxRecommendedMegas = Math.max(0, 2 - megaAnchors);
+  const maxRecommendedHazards = Math.max(0, 1 - hazardAnchors);
 
   const rankedCandidates = available
     .filter((species) => !existing.has(toId(species.name)))
@@ -1098,6 +1123,7 @@ export async function buildWithConstraints(constraints: BuildConstraints, deps: 
 
       const tags = [
         megaCandidate ? 'mega' : null,
+        ...getHazardTagsFromPreview(preview),
         species.baseStats.spe >= 100 || hasPriority ? 'speed' : null,
         hasPivot ? 'pivot' : null,
         hasSupport ? 'utility' : null,
@@ -1120,7 +1146,12 @@ export async function buildWithConstraints(constraints: BuildConstraints, deps: 
     })
     .sort((left, right) => right.score - left.score || left.species.localeCompare(right.species));
 
-  const recommendations = selectDiverseRecommendations(rankedCandidates, Math.max(1, 6 - seedTeam.members.length), maxRecommendedMegas);
+  const recommendations = selectDiverseRecommendations(
+    rankedCandidates,
+    Math.max(1, 6 - seedTeam.members.length),
+    maxRecommendedMegas,
+    maxRecommendedHazards,
+  );
 
   return {
     format: constraints.format,
@@ -1135,6 +1166,7 @@ export async function buildWithConstraints(constraints: BuildConstraints, deps: 
         ? [
             'The BSS teambuilding guide is now reflected in scoring: bring-3 shells, safe leads or pivots, speed control or priority, and matchup patching matter more than generic hazards or same-type stacking.',
             'The builder also avoids stuffing the roster with too many Mega options; at most two Mega candidates are kept, and they still need real synergy with the rest of the shell.',
+            'It also avoids overstacking hazard setters, so field pressure does not crowd out better bring-3 partners.',
             `Current live pressure points include ${(report.threats.topPressureThreats ?? []).slice(0, 3).map((threat) => threat.species).join(', ') || 'the usual top threats'}.`,
           ]
         : []),
