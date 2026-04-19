@@ -1,0 +1,47 @@
+Incineroar @ Sitrus Berry
+Ability: Intimidate
+Level: 50
+- Flare Blitz
+- Knock Off
+- U-turn
+- Will-O-Wisp
+
+Archaludon @ Assault Vest
+Ability: Stamina
+Level: 50
+- Draco Meteor
+- Flash Cannon
+- Thunderbolt
+- Body Press
+
+Ogerpon-Wellspring @ Wellspring Mask
+Ability: Water Absorb
+Level: 50
+- Ivy Cudgel
+- Horn Leech
+- Power Whip
+- Swords Dance
+
+Rillaboom @ Choice Band
+Ability: Grassy Surge
+Level: 50
+- Grassy Glide
+- Wood Hammer
+- U-turn
+- Knock Off
+
+Kingambit @ Black Glasses
+Ability: Supreme Overlord
+Level: 50
+- Kowtow Cleave
+- Sucker Punch
+- Iron Head
+- Swords Dance
+
+Landorus-Therian @ Leftovers
+Ability: Intimidate
+Level: 50
+- Earthquake
+- U-turn
+- Stealth Rock
+- Taunt

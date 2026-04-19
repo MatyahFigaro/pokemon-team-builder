@@ -1,0 +1,47 @@
+Cresselia @ Leftovers
+Ability: Levitate
+Level: 50
+- Trick Room
+- Ice Beam
+- Thunder Wave
+- Moonlight
+
+Kingambit @ Leftovers
+Ability: Supreme Overlord
+Level: 50
+- Kowtow Cleave
+- Sucker Punch
+- Iron Head
+- Swords Dance
+
+Primarina @ Leftovers
+Ability: Torrent
+Level: 50
+- Moonblast
+- Surf
+- Haze
+- Protect
+
+Heatran @ Shuca Berry
+Ability: Flash Fire
+Level: 50
+- Magma Storm
+- Earth Power
+- Taunt
+- Protect
+
+Amoonguss @ Rocky Helmet
+Ability: Regenerator
+Level: 50
+- Spore
+- Giga Drain
+- Clear Smog
+- Protect
+
+Dragonite @ Lum Berry
+Ability: Multiscale
+Level: 50
+- Dragon Dance
+- Extreme Speed
+- Earthquake
+- Roost

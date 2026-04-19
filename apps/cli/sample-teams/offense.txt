@@ -1,0 +1,48 @@
+Dragonite @ Lum Berry
+Ability: Multiscale
+Level: 50
+Tera Type: Normal
+- Dragon Dance
+- Extreme Speed
+- Earthquake
+- Roost
+
+Garchomp @ Focus Sash
+Ability: Rough Skin
+Level: 50
+- Earthquake
+- Dragon Claw
+- Stealth Rock
+- Taunt
+
+Gholdengo @ Choice Scarf
+Ability: Good as Gold
+Level: 50
+- Make It Rain
+- Shadow Ball
+- Trick
+- Focus Blast
+
+Volcarona @ Leftovers
+Ability: Flame Body
+Level: 50
+- Quiver Dance
+- Fiery Dance
+- Bug Buzz
+- Giga Drain
+
+Kingambit @ Black Glasses
+Ability: Supreme Overlord
+Level: 50
+- Kowtow Cleave
+- Sucker Punch
+- Iron Head
+- Swords Dance
+
+Primarina @ Leftovers
+Ability: Torrent
+Level: 50
+- Moonblast
+- Surf
+- Haze
+- Protect

@@ -195,6 +195,14 @@ const archetypeProfiles: ArchetypeProfile[] = [
     wantsBulk: true,
   },
   {
+    key: 'trick-room',
+    label: 'Trick room',
+    desiredRoles: ['pivot', 'physical-wall', 'special-wall'],
+    wantsSpeed: false,
+    wantsDisruption: true,
+    wantsBulk: true,
+  },
+  {
     key: 'priority-pressure',
     label: 'Priority-heavy',
     desiredRoles: ['physical-wall', 'pivot'],
@@ -284,6 +292,14 @@ function evaluateArchetypeMatchups(
       score += priorityCount * 4;
       score += bulkyCount * 3;
       if (disruptionCount === 0) reasons.push('Few anti-setup emergency buttons.');
+    }
+
+    if (archetype.key === 'trick-room') {
+      score += disruptionCount * 6;
+      score += bulkyCount * 5;
+      score += priorityCount * 5;
+      score += pivotCount * 2;
+      if (disruptionCount === 0 && priorityCount === 0) reasons.push('Little counterplay into slow Trick Room snowball turns.');
     }
 
     if (archetype.key === 'priority-pressure') {

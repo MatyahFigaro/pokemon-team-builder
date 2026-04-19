@@ -1,0 +1,47 @@
+Landorus-Therian @ Rocky Helmet
+Ability: Intimidate
+Level: 50
+- Earthquake
+- U-turn
+- Stealth Rock
+- Taunt
+
+Corviknight @ Leftovers
+Ability: Mirror Armor
+Level: 50
+- Brave Bird
+- U-turn
+- Roost
+- Defog
+
+Primarina @ Leftovers
+Ability: Torrent
+Level: 50
+- Moonblast
+- Surf
+- Haze
+- Protect
+
+Heatran @ Leftovers
+Ability: Flash Fire
+Level: 50
+- Magma Storm
+- Earth Power
+- Taunt
+- Protect
+
+Rillaboom @ Miracle Seed
+Ability: Grassy Surge
+Level: 50
+- Grassy Glide
+- Wood Hammer
+- U-turn
+- Knock Off
+
+Dragonite @ Lum Berry
+Ability: Multiscale
+Level: 50
+- Dragon Dance
+- Extreme Speed
+- Earthquake
+- Roost

@@ -1,10 +1,10 @@
 import type { AnalysisReport, SpeciesDexPort, Suggestion, Team, TeamIssue, ValidationPort } from '@pokemon/domain';
-import { defaultBssMeta } from '@pokemon/storage';
 
-import { getCompetitiveSetPreview, prioritizePreviewableCandidates } from './legal-preview.js';
+import { getCompetitiveSetPreview, prioritizePreviewableCandidates, type PreviewRoleHint } from './legal-preview.js';
 
-const knownRemovalLabels = [...defaultBssMeta.suggestedRemoval, 'Great Tusk', 'Corviknight', 'Iron Treads', 'Mandibuzz'];
-const knownDisruptionLabels = ['Heatran', 'Primarina', 'Grimmsnarl', 'Whimsicott', 'Corviknight', 'Gyarados'];
+const HAZARD_CONTROL_MOVES = ['Defog', 'Rapid Spin', 'Mortal Spin', 'Court Change'];
+const DISRUPTION_MOVES = ['Taunt', 'Encore', 'Haze', 'Clear Smog', 'Thunder Wave', 'Yawn', 'Roar', 'Whirlwind', 'Dragon Tail'];
+const PIVOT_MOVES = ['U-turn', 'Volt Switch', 'Parting Shot', 'Flip Turn', 'Baton Pass', 'Teleport', 'Chilly Reception'];
 
 function normalize(value: string | undefined): string {
   return (value ?? '').trim().toLowerCase();
@@ -16,6 +16,10 @@ function getTargetSlot(team: Team, issue?: TeamIssue): number | undefined {
 
   const index = team.members.findIndex((member) => (member.name || member.species) === memberName);
   return index >= 0 ? index + 1 : undefined;
+}
+
+function canLearnAnyMove(speciesName: string, moveNames: string[], dex: SpeciesDexPort): boolean {
+  return moveNames.some((moveName) => dex.canLearnMove(speciesName, moveName));
 }
 
 function getAbilityText(abilityName: string, dex: SpeciesDexPort): string {
@@ -58,12 +62,22 @@ function resolveSpeciesLabel(label: string, legalNames: string[]): string | null
   return suffix ?? null;
 }
 
+interface CandidateRankingOptions {
+  threatenedType?: string;
+  threatName?: string;
+  preferSpeed?: boolean;
+  preferBulk?: boolean;
+  preferRemoval?: boolean;
+  preferDisruption?: boolean;
+  preferPivot?: boolean;
+}
+
 function scoreCandidate(
   candidateName: string,
   team: Team,
   report: AnalysisReport,
   dex: SpeciesDexPort,
-  options: { threatenedType?: string; threatName?: string; preferSpeed?: boolean; preferBulk?: boolean },
+  options: CandidateRankingOptions,
 ): number {
   const species = dex.getSpecies(candidateName);
   if (!species) return -999;
@@ -81,6 +95,18 @@ function scoreCandidate(
 
   if (options.preferBulk) {
     score += species.baseStats.hp + Math.max(species.baseStats.def, species.baseStats.spd) >= 190 ? 6 : 0;
+  }
+
+  if (options.preferRemoval && canLearnAnyMove(species.name, HAZARD_CONTROL_MOVES, dex)) {
+    score += 12;
+  }
+
+  if (options.preferDisruption && canLearnAnyMove(species.name, DISRUPTION_MOVES, dex)) {
+    score += 10;
+  }
+
+  if (options.preferPivot && canLearnAnyMove(species.name, PIVOT_MOVES, dex)) {
+    score += 8;
   }
 
   if (options.threatenedType) {
@@ -120,33 +146,99 @@ function rankFromLegalPool(
   team: Team,
   report: AnalysisReport,
   dex: SpeciesDexPort,
-  options: { threatenedType?: string; threatName?: string; preferSpeed?: boolean; preferBulk?: boolean },
-  preferredLabels?: string[],
+  options: CandidateRankingOptions,
 ): string[] {
   const legalPool = dex.listAvailableSpecies(team.format);
   const teamSpecies = new Set(team.members.map((member) => normalize(member.species)));
-  const legalNames = legalPool.map((species) => species.name);
+  const anchorSpecies = getBringAnchors(team, report);
+  const anchorTypes = new Set(anchorSpecies.flatMap((name) => dex.getSpecies(name)?.types ?? []));
 
-  const candidateNames = preferredLabels?.length
-    ? preferredLabels
-        .map((label) => resolveSpeciesLabel(label, legalNames))
-        .filter((name): name is string => Boolean(name))
-    : legalNames;
+  return legalPool
+    .filter((species) => !teamSpecies.has(normalize(species.name)))
+    .map((species) => {
+      let score = scoreCandidate(species.name, team, report, dex, options) + getThreatAnswerBoost(species.name, report, dex);
 
-  return Array.from(new Set(candidateNames))
-    .filter((name) => !teamSpecies.has(normalize(name)))
-    .map((name) => ({ name, score: scoreCandidate(name, team, report, dex, options) }))
+      if (report.profile.style === 'bss') {
+        if (report.battlePlan.speedControlRating === 'poor' && species.baseStats.spe >= 100) score += 6;
+        score += species.types.filter((type) => !anchorTypes.has(type)).length * 2;
+      }
+
+      return { name: species.name, score };
+    })
     .sort((left, right) => right.score - left.score || left.name.localeCompare(right.name))
     .slice(0, 3)
     .map((entry) => entry.name);
 }
 
-function buildCompetitiveSetLines(exampleOptions: string[], team: Team, validator: ValidationPort): string[] {
-  return prioritizePreviewableCandidates(exampleOptions, team.format, validator)
-    .map((name) => getCompetitiveSetPreview(name, team.format, validator))
+function buildCompetitiveSetLines(
+  exampleOptions: string[],
+  team: Team,
+  dex: SpeciesDexPort,
+  validator: ValidationPort,
+  roleHint: PreviewRoleHint = 'default',
+): string[] {
+  return prioritizePreviewableCandidates(exampleOptions, team.format, dex, validator, { roleHint })
+    .map((name) => getCompetitiveSetPreview(name, team.format, dex, validator, { roleHint }))
     .filter((value): value is string => Boolean(value))
     .slice(0, 2)
     .map((preview) => `Sample competitive set: ${preview}`);
+}
+
+function getBringAnchors(team: Team, report: AnalysisReport): string[] {
+  const wanted = new Set([...report.battlePlan.leadCandidates, ...report.battlePlan.likelyPicks].map(normalize));
+  return Array.from(new Set(
+    team.members
+      .filter((member) => wanted.has(normalize(member.name || member.species)))
+      .map((member) => member.species),
+  )).slice(0, 3);
+}
+
+function scoreAgainstThreat(candidateName: string, threatName: string, dex: SpeciesDexPort): number {
+  const candidate = dex.getSpecies(candidateName);
+  const threat = dex.getSpecies(threatName);
+  if (!candidate || !threat) return 0;
+
+  let score = 0;
+  const threatIsPhysical = threat.baseStats.atk >= threat.baseStats.spa;
+
+  for (const type of threat.types) {
+    const multiplier = dex.getTypeEffectiveness(type, candidate.types);
+    if (multiplier === 0 || abilityCouldGrantImmunity(candidate.abilities, type, dex)) score += 6;
+    else if (multiplier < 1) score += 4;
+    else if (multiplier > 1) score -= 4;
+  }
+
+  if (candidate.baseStats.spe >= threat.baseStats.spe + 5) score += 5;
+
+  if (threatIsPhysical && candidate.baseStats.hp + candidate.baseStats.def >= 190) score += 4;
+  if (!threatIsPhysical && candidate.baseStats.hp + candidate.baseStats.spd >= 190) score += 4;
+
+  if (candidate.types.some((type) => dex.getTypeEffectiveness(type, threat.types) > 1 && !abilityCouldGrantImmunity(threat.abilities, type, dex))) {
+    score += 5;
+  }
+
+  return score;
+}
+
+function getThreatAnswerBoost(candidateName: string, report: AnalysisReport, dex: SpeciesDexPort): number {
+  return report.threats.topPressureThreats.reduce((score, threat) => {
+    const weight = threat.pressure === 'high' ? 1.2 : 1;
+    return score + scoreAgainstThreat(candidateName, threat.species, dex) * weight;
+  }, 0);
+}
+
+function buildBringPlanLines(exampleOptions: string[], report: AnalysisReport): string[] {
+  if (report.profile.style !== 'bss') return [];
+
+  const lead = report.battlePlan.leadCandidates[0] ?? report.battlePlan.likelyPicks[0];
+  const backline = report.battlePlan.likelyPicks.filter((name) => normalize(name) !== normalize(lead)).slice(0, 2);
+
+  return exampleOptions.slice(0, 2).map((name) => {
+    const trio = Array.from(new Set([lead, name, ...backline].filter(Boolean) as string[])).slice(0, 3);
+    return trio.length >= 2
+      ? `Bring-3 shell: ${trio.join(' / ')}.`
+      : `${name} fits naturally into the current BSS game plan.`;
+  });
 }
 
 export function buildPatchSuggestions(team: Team, report: AnalysisReport, dex: SpeciesDexPort, validator: ValidationPort): Suggestion[] {
@@ -168,9 +260,11 @@ export function buildPatchSuggestions(team: Team, report: AnalysisReport, dex: S
     const isBss = report.profile.style === 'bss';
 
     const exampleOptions = prioritizePreviewableCandidates(
-      rankFromLegalPool(team, report, dex, { threatenedType: topWeakType, preferBulk: true }, knownRemovalLabels),
+      rankFromLegalPool(team, report, dex, { threatenedType: topWeakType, preferBulk: true, preferRemoval: true }),
       team.format,
+      dex,
       validator,
+      { roleHint: 'hazard-control' },
     );
 
     suggestions.push({
@@ -191,7 +285,7 @@ export function buildPatchSuggestions(team: Team, report: AnalysisReport, dex: S
               'Turn one low-impact slot into a legal Defog or Rapid Spin user.',
               'Prefer a remover that also patches one of your repeated weaknesses.',
             ]),
-        ...buildCompetitiveSetLines(exampleOptions, team, validator),
+        ...buildCompetitiveSetLines(exampleOptions, team, dex, validator, 'hazard-control'),
       ],
       exampleOptions,
     });
@@ -202,18 +296,21 @@ export function buildPatchSuggestions(team: Team, report: AnalysisReport, dex: S
     const exampleOptions = prioritizePreviewableCandidates(
       rankFromLegalPool(team, report, dex, { threatName: topThreat.species, preferBulk: true, preferSpeed: true }),
       team.format,
+      dex,
       validator,
+      { roleHint: 'bulky' },
     );
 
     suggestions.push({
       kind: 'replace',
       title: `Add a clearer answer to ${topThreat.species}`,
-      rationale: 'Species-level threat scoring suggests this matchup remains shaky even when exact opposing sets are unknown.',
+      rationale: 'Species-level threat scoring flags this as one of the most uncomfortable real format threats for the current roster.',
       priority: topThreat.pressure === 'high' ? 'high' : 'medium',
       changes: [
         'Replace one passive slot with a sturdier check or revenge killer for this threat.',
         'Prefer a legal candidate that both resists its usual pressure and threatens it back.',
-        ...buildCompetitiveSetLines(exampleOptions, team, validator),
+        ...buildBringPlanLines(exampleOptions, report),
+        ...buildCompetitiveSetLines(exampleOptions, team, dex, validator, 'bulky'),
       ],
       exampleOptions,
     });
@@ -222,9 +319,11 @@ export function buildPatchSuggestions(team: Team, report: AnalysisReport, dex: S
   const matchupIssue = report.issues.find((issue) => issue.code === 'bss-matchup-cluster-weak');
   if (matchupIssue) {
     const exampleOptions = prioritizePreviewableCandidates(
-      rankFromLegalPool(team, report, dex, { preferBulk: true, preferSpeed: true }, defaultBssMeta.suggestedPivots),
+      rankFromLegalPool(team, report, dex, { preferBulk: true, preferSpeed: true, preferPivot: true, preferDisruption: true }),
       team.format,
+      dex,
       validator,
+      { roleHint: 'pivot' },
     );
 
     suggestions.push({
@@ -235,7 +334,7 @@ export function buildPatchSuggestions(team: Team, report: AnalysisReport, dex: S
       changes: [
         `Focus on improving these matchups first: ${report.archetypes.weakMatchups.join(', ') || 'rough archetypes'}.`,
         'Use one slot to add either disruption, a sturdier pivot, or a better dedicated breaker depending on the cluster.',
-        ...buildCompetitiveSetLines(exampleOptions, team, validator),
+        ...buildCompetitiveSetLines(exampleOptions, team, dex, validator, 'pivot'),
       ],
       exampleOptions,
     });
@@ -247,7 +346,9 @@ export function buildPatchSuggestions(team: Team, report: AnalysisReport, dex: S
     const exampleOptions = prioritizePreviewableCandidates(
       rankFromLegalPool(team, report, dex, { threatenedType, preferBulk: true }),
       team.format,
+      dex,
       validator,
+      { roleHint: 'bulky' },
     );
 
     suggestions.push({
@@ -259,7 +360,7 @@ export function buildPatchSuggestions(team: Team, report: AnalysisReport, dex: S
       changes: [
         'Replace one exposed slot with a format-legal answer that actually resists or blanks this pressure line.',
         'Favor secondary utility such as pivoting, hazards, or recovery.',
-        ...buildCompetitiveSetLines(exampleOptions, team, validator),
+        ...buildCompetitiveSetLines(exampleOptions, team, dex, validator, 'bulky'),
       ],
       exampleOptions,
     });
@@ -269,9 +370,11 @@ export function buildPatchSuggestions(team: Team, report: AnalysisReport, dex: S
     const isBss = report.profile.style === 'bss';
 
     const exampleOptions = prioritizePreviewableCandidates(
-      rankFromLegalPool(team, report, dex, { preferSpeed: true }, defaultBssMeta.suggestedSpeedControl),
+      rankFromLegalPool(team, report, dex, { preferSpeed: true, preferPivot: true }),
       team.format,
+      dex,
       validator,
+      { roleHint: 'speed' },
     );
 
     suggestions.push({
@@ -285,13 +388,14 @@ export function buildPatchSuggestions(team: Team, report: AnalysisReport, dex: S
         ...(isBss
           ? [
               'Add a legal fast closer, Choice Scarf line, or high-value priority user.',
-              'If the team is bulky, Taunt or Thunder Wave can also function as emergency tempo control.',
+              'Prefer one that your likely lead and backline already support in a real bring-3 shell.',
             ]
           : [
               'Add a Choice Scarf user or a naturally fast revenge killer.',
               'If the team is bulky, consider Thunder Wave or Tailwind support instead.',
             ]),
-        ...buildCompetitiveSetLines(exampleOptions, team, validator),
+        ...buildBringPlanLines(exampleOptions, report),
+        ...buildCompetitiveSetLines(exampleOptions, team, dex, validator, 'speed'),
       ],
       exampleOptions,
     });
@@ -300,9 +404,11 @@ export function buildPatchSuggestions(team: Team, report: AnalysisReport, dex: S
   const disruptionIssue = report.issues.find((issue) => issue.code === 'bss-disruption-low');
   if (disruptionIssue) {
     const exampleOptions = prioritizePreviewableCandidates(
-      rankFromLegalPool(team, report, dex, { preferBulk: true }, knownDisruptionLabels),
+      rankFromLegalPool(team, report, dex, { preferBulk: true, preferDisruption: true, preferPivot: true }),
       team.format,
+      dex,
       validator,
+      { roleHint: 'disruption' },
     );
 
     suggestions.push({
@@ -313,7 +419,8 @@ export function buildPatchSuggestions(team: Team, report: AnalysisReport, dex: S
       changes: [
         'Fit Taunt, Haze, Encore, phazing, or status utility on one likely bring-3 slot.',
         'Prefer the change on a legal Pokémon you already want to select often in preview.',
-        ...buildCompetitiveSetLines(exampleOptions, team, validator),
+        ...buildBringPlanLines(exampleOptions, report),
+        ...buildCompetitiveSetLines(exampleOptions, team, dex, validator, 'disruption'),
       ],
       exampleOptions,
     });
@@ -321,9 +428,11 @@ export function buildPatchSuggestions(team: Team, report: AnalysisReport, dex: S
 
   if (suggestions.length === 0) {
     const exampleOptions = prioritizePreviewableCandidates(
-      rankFromLegalPool(team, report, dex, { preferBulk: true, preferSpeed: true }, defaultBssMeta.suggestedPivots),
+      rankFromLegalPool(team, report, dex, { preferBulk: true, preferSpeed: true, preferPivot: true }),
       team.format,
+      dex,
       validator,
+      { roleHint: 'pivot' },
     );
 
     suggestions.push({
@@ -334,7 +443,8 @@ export function buildPatchSuggestions(team: Team, report: AnalysisReport, dex: S
       changes: [
         'Upgrade one slot to add either momentum or extra defensive utility.',
         'Prefer an adjustment that keeps your current game plan intact and improves at least one live matchup.',
-        ...buildCompetitiveSetLines(exampleOptions, team, validator),
+        ...buildBringPlanLines(exampleOptions, report),
+        ...buildCompetitiveSetLines(exampleOptions, team, dex, validator, 'pivot'),
       ],
       exampleOptions,
     });

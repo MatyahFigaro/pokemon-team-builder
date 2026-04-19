@@ -9,6 +9,7 @@ export interface SpeciesInfo {
   abilities: string[];
   tier?: string;
   bst: number;
+  requiredItem?: string;
 }
 
 export interface FormatMechanicsInfo {
@@ -33,6 +34,7 @@ export interface MoveInfo {
   type: string;
   category: string;
   priority: number;
+  basePower?: number;
   target?: string;
   flags: string[];
   shortDesc?: string;
@@ -68,6 +70,8 @@ export interface SpeciesDexPort {
   getBattleProfile(set: PokemonSet, format?: FormatId): BattleProfile | null;
   getFormatMechanics(format: FormatId): FormatMechanicsInfo;
   getMatchupMultiplier(attackingType: string, set: PokemonSet, format?: FormatId): number;
+  canLearnMove(speciesName: string, moveName: string): boolean;
+  getLearnableMoves(speciesName: string): MoveInfo[];
   listAvailableSpecies(format: FormatId): SpeciesInfo[];
   listTypes(): string[];
   getTypeEffectiveness(attackingType: string, defendingTypes: readonly string[]): number;

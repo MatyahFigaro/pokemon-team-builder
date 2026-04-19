@@ -360,6 +360,7 @@ function buildMoveInfo(move: any): MoveInfo {
     type: move.type,
     category: move.category,
     priority: Number(move.priority ?? 0),
+    basePower: Number(move.basePower ?? 0),
     target: move.target,
     flags: Object.keys(move.flags ?? {}),
     shortDesc: move.shortDesc,
@@ -446,6 +447,7 @@ function buildSpeciesInfo(species: any): SpeciesInfo {
     abilities: (Object.values(species.abilities ?? {}) as string[]).filter(Boolean),
     tier: species.tier,
     bst: Object.values(baseStats).reduce((sum, value) => sum + value, 0),
+    requiredItem: species.requiredItem ?? species.requiredItems?.[0],
   };
 }
 
@@ -480,10 +482,17 @@ function resolveActiveAbility(species: any, set: PokemonSet): string {
   return requestedAbility || knownAbilities[0] || '';
 }
 
+function getLearnset(speciesName: string): string[] {
+  const species = Dex.species.get(speciesName);
+  if (!species.exists) return [];
+
+  const learnsetData = Dex.species.getLearnsetData(species.id) as { learnset?: Record<string, unknown> } | null;
+  return Object.keys(learnsetData?.learnset ?? {});
+}
+
 function getProbeMoves(dex: any, species: any): string[] {
   const preferredMoves = ['protect', 'earthquake', 'thunderbolt', 'shadowball', 'moonblast', 'closecombat', 'tackle'];
-  const learnsetData = dex.species.getLearnsetData(species.id) as { learnset?: Record<string, unknown> } | null;
-  const learnset: string[] = Object.keys(learnsetData?.learnset ?? {});
+  const learnset = getLearnset(species.name);
 
   const chosenMoveId = preferredMoves.find((moveId) => learnset.includes(moveId)) ?? learnset[0];
   if (!chosenMoveId) return [];
@@ -607,6 +616,20 @@ export class ShowdownDexAdapter implements SpeciesDexPort {
     if (abilityModifier === 0) return 0;
 
     return baseMultiplier * abilityModifier;
+  }
+
+  canLearnMove(speciesName: string, moveName: string): boolean {
+    const move = Dex.moves.get(moveName);
+    if (!move.exists) return false;
+
+    return getLearnset(speciesName).includes(move.id);
+  }
+
+  getLearnableMoves(speciesName: string): MoveInfo[] {
+    return getLearnset(speciesName)
+      .map((moveId) => Dex.moves.get(moveId))
+      .filter((move) => move?.exists)
+      .map((move) => buildMoveInfo(move));
   }
 
   listAvailableSpecies(format: string): SpeciesInfo[] {
