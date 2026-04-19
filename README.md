@@ -1,159 +1,205 @@
-# Turborepo starter
+# Pokémon Team Builder
 
-This Turborepo starter is maintained by the Turborepo core team.
+A serious CLI-first Pokémon team builder and analyzer for competitive formats, with a strong focus on Battle Stadium Singles style play, bring-3 decision support, and format-aware recommendations.
 
-## Using this example
+The project uses Pokémon Showdown as the source of truth for legality, learnsets, items, abilities, and battle mechanics. Live public usage data is used to scout the meta and improve recommendations.
 
-Run the following command:
+## Current status
 
-```sh
-npx create-turbo@latest
+The CLI is already usable for:
+
+- analyzing a team from Showdown import text
+- suggesting patches and completions
+- scouting the live meta for a format
+- planning likely leads and bring-3 lines
+- building around one or more anchor Pokémon
+- listing all legal Pokémon for a format, including Mega transformations when available
+- using full Mega names such as `Charizard-Mega-X` directly in the build core
+
+## Design goals
+
+- use Showdown for competitive truth instead of hardcoded legality
+- respect the exact requested format as much as possible
+- prefer live usage information over generic heuristics
+- support real BSS style gameplans, not only generic six-mon balance checks
+- make output useful for preview decisions, lead choices, and bring-3 planning
+
+## Data sources
+
+### Primary source of truth
+
+- Pokémon Showdown for legality, learnsets, mechanics, types, items, abilities, and validation
+
+### Usage and meta context
+
+- Smogon public usage stats when an exact ladder exists
+- Pokémon Champions public stats pages when Smogon only has a proxy ladder for the requested Champions format
+
+All external usage is curated through the chosen format’s legal species pool so illegal Pokémon do not leak into analysis or recommendations.
+
+## Quick start
+
+### Requirements
+
+- Node.js 18 or newer
+- pnpm 9 or newer
+
+### Install
+
+```bash
+pnpm install
 ```
-
-## What's inside?
-
-This Turborepo includes the following packages/apps:
-
-### Apps and Packages
-
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
-
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
-
-### Utilities
-
-This Turborepo has some additional tools already setup for you:
-
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
 
 ### Build
 
-To build all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo build
+```bash
+pnpm build
 ```
 
-Without global `turbo`, use your package manager:
+### Show CLI help
 
-```sh
-cd my-turborepo
-npx turbo build
-pnpm dlx turbo build
-pnpm exec turbo build
+```bash
+node apps/cli/dist/main.js --help
 ```
 
-You can build a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+## Common usage
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
+### 1. List available formats
 
-```sh
-turbo build --filter=docs
+```bash
+node apps/cli/dist/main.js list-formats
 ```
 
-Without global `turbo`:
+### 2. List all legal Pokémon for a format
 
-```sh
-npx turbo build --filter=docs
-pnpm exec turbo build --filter=docs
-pnpm exec turbo build --filter=docs
+```bash
+node apps/cli/dist/main.js list-pokemon --format gen9championsbssregma
 ```
 
-### Develop
+For easy anchor copy and paste:
 
-To develop all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo dev
+```bash
+node apps/cli/dist/main.js list-pokemon --format gen9championsbssregma --names-only
 ```
 
-Without global `turbo`, use your package manager:
+To search for a specific line, type, or form:
 
-```sh
-cd my-turborepo
-npx turbo dev
-pnpm exec turbo dev
-pnpm exec turbo dev
+```bash
+node apps/cli/dist/main.js list-pokemon --format gen9championsbssregma --query charizard-mega
 ```
 
-You can develop a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+### 3. Analyze a team
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo dev --filter=web
+```bash
+node apps/cli/dist/main.js analyze -f apps/cli/team.txt --format gen9championsbssregma --explain
 ```
 
-Without global `turbo`:
+### 4. Get patch suggestions
 
-```sh
-npx turbo dev --filter=web
-pnpm exec turbo dev --filter=web
-pnpm exec turbo dev --filter=web
+```bash
+node apps/cli/dist/main.js suggest-patch -f apps/cli/team.txt --format gen9championsbssregma
 ```
 
-### Remote Caching
+### 5. Complete a partial core
 
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
-
-Turborepo can use a technique known as [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
-
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo login
+```bash
+node apps/cli/dist/main.js suggest-complete -f apps/cli/team.txt --format gen9championsbssregma
 ```
 
-Without global `turbo`, use your package manager:
+### 6. Scout the live meta
 
-```sh
-cd my-turborepo
-npx turbo login
-pnpm exec turbo login
-pnpm exec turbo login
+```bash
+node apps/cli/dist/main.js meta-scout --format gen9championsbssregma
 ```
 
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
+### 7. Plan the best lead and bring-3
 
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo link
+```bash
+node apps/cli/dist/main.js preview-plan -f apps/cli/team.txt -o apps/cli/sample-teams/offense.txt --format gen9championsbssregma
 ```
 
-Without global `turbo`:
+### 8. Build around anchors
 
-```sh
-npx turbo link
-pnpm exec turbo link
-pnpm exec turbo link
+```bash
+node apps/cli/dist/main.js build --format gen9championsbssregma --core 'Dragonite,Gholdengo' --style bulky-offense
 ```
 
-## Useful Links
+Mega forms are supported when they are legal in the chosen format:
 
-Learn more about the power of Turborepo:
+```bash
+node apps/cli/dist/main.js build --format gen9championsbssregma --core 'Charizard-Mega-X' --style bulky-offense
+```
 
-- [Tasks](https://turborepo.dev/docs/crafting-your-repository/running-tasks)
-- [Caching](https://turborepo.dev/docs/crafting-your-repository/caching)
-- [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching)
-- [Filtering](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters)
-- [Configuration Options](https://turborepo.dev/docs/reference/configuration)
-- [CLI Usage](https://turborepo.dev/docs/reference/command-line-reference)
+### 9. Use the guided interactive mode
+
+```bash
+node apps/cli/dist/main.js interactive
+```
+
+## Available CLI commands
+
+- `analyze` — full team report from Showdown text
+- `build` — generate recommendations around anchors and style constraints
+- `interactive` or `wizard` — guided CLI flow
+- `list-formats` — show available Showdown formats
+- `list-pokemon` — show legal Pokémon for a format
+- `meta-scout` — show live top threats, cores, and anti-meta ideas
+- `optimize` — improve existing legal sets
+- `preview-plan` — recommend leads and bring-3 lines from preview
+- `suggest` — general team recommendations
+- `suggest-patch` — targeted fixes for a current team
+- `suggest-complete` — complete a partial team core
+- `sim-matchup` — estimate matchup pace and likely winning lines
+- `normalize` — normalize Showdown import text
+
+## Score interpretation
+
+There are two different score systems in the app:
+
+- the main team analysis score is a real `0–100` structural rating
+- the recommendation score shown in `build` is a relative ranking score used to sort candidates
+
+That means build outputs in the `20–40` range are normal and do not mean the recommendation is weak.
+
+## Project structure
+
+```text
+apps/
+  cli/                  Main CLI product
+packages/
+  builder/              Team analysis, scoring, and recommendation engine
+  domain/               Shared domain types and ports
+  showdown-adapter/     Showdown-backed legality and dex adapter
+  storage/              Live usage analytics and source selection
+```
+
+## Development
+
+### Root commands
+
+```bash
+pnpm build
+pnpm dev
+pnpm lint
+pnpm check-types
+```
+
+### Run the CLI in development mode
+
+```bash
+pnpm --filter @pokemon/cli dev --help
+```
+
+## Roadmap
+
+The most valuable next upgrades are:
+
+- matchup simulation against top usage threats and common sets
+- stronger set-level and bring-3 evaluation
+- clearer score presentation in the CLI
+- more regression tests for legality, anchors, Mega forms, and usage-source selection
+- optional richer explanation layers backed by an LLM, while keeping Showdown as the source of truth
+
+## Notes
+
+This project aims to stay practical and format-aware. If the user asks for a specific format, the recommendations should be legal, competitive, and useful for that exact ladder or its best verified proxy.
