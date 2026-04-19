@@ -62,7 +62,7 @@ export function registerInteractiveCommand(program: Command): void {
           }
 
           const core = (await rl.question('Anchor species (comma-separated, full Mega names allowed): ')).trim();
-          const style = (await rl.question('Style (balance/hyper-offense/bulky-offense/trick-room/rain): ')).trim() as 'balance' | 'hyper-offense' | 'bulky-offense' | 'trick-room' | 'rain';
+          const style = (await rl.question('Style (balance/hyper-offense/bulky-offense/stall/trick-room/rain/sun/sand): ')).trim() as 'balance' | 'hyper-offense' | 'bulky-offense' | 'stall' | 'trick-room' | 'rain' | 'sun' | 'sand';
           const report = await service.buildWithConstraints({
             format,
             coreSpecies: core.split(',').map((entry) => entry.trim()).filter(Boolean),

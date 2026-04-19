@@ -56,7 +56,7 @@ export interface MetaScoutingReport {
 export interface BuildConstraints {
   format: string;
   coreSpecies?: string[];
-  style?: 'balance' | 'hyper-offense' | 'bulky-offense' | 'trick-room' | 'rain';
+  style?: 'balance' | 'hyper-offense' | 'bulky-offense' | 'stall' | 'trick-room' | 'rain' | 'sun' | 'sand';
   avoidSpecies?: string[];
   allowRestricted?: boolean;
 }
@@ -106,7 +106,8 @@ function formatStatSpread(stats?: PokemonSet['evs']): string {
 const BUILD_HAZARD_MOVES = ['Stealth Rock', 'Spikes', 'Toxic Spikes', 'Sticky Web'];
 const BUILD_PIVOT_MOVES = ['U-turn', 'Volt Switch', 'Parting Shot', 'Flip Turn', 'Teleport', 'Chilly Reception'];
 const BUILD_RECOVERY_MOVES = ['Recover', 'Roost', 'Slack Off', 'Soft-Boiled', 'Moonlight', 'Morning Sun', 'Synthesis', 'Rest'];
-const BUILD_SUPPORT_MOVES = ['Will-O-Wisp', 'Thunder Wave', 'Yawn', 'Encore', 'Taunt', 'Trick Room'];
+const BUILD_SUPPORT_MOVES = ['Will-O-Wisp', 'Thunder Wave', 'Yawn', 'Encore', 'Taunt', 'Trick', 'Haze', 'Roar', 'Whirlwind', 'Dragon Tail', 'Trick Room'];
+const BUILD_PRIORITY_MOVES = ['Extreme Speed', 'Sucker Punch', 'Aqua Jet', 'Ice Shard', 'Mach Punch', 'Bullet Punch', 'Shadow Sneak', 'Vacuum Wave'];
 
 interface ClassicTypeCore {
   name: string;
@@ -149,13 +150,23 @@ function canLearnAnyMove(speciesName: string, moveNames: string[], dex: SpeciesD
   return moveNames.some((moveName) => dex.canLearnMove(speciesName, moveName));
 }
 
+function isBssLikeFormat(format: string): boolean {
+  const id = toId(format);
+  return id.includes('bss') || id.includes('battlestadium') || id.includes('championsbss');
+}
+
 function getBuildRoleHint(speciesName: string, dex: SpeciesDexPort, style?: BuildConstraints['style']): PreviewRoleHint {
   const species = dex.getSpecies(speciesName);
   if (!species) return 'default';
 
+  const abilityIds = species.abilities.map(toId);
+
   if (canLearnAnyMove(speciesName, BUILD_PIVOT_MOVES, dex)) return 'pivot';
   if (canLearnAnyMove(speciesName, BUILD_HAZARD_MOVES, dex)) return 'hazard-control';
-  if (style === 'rain' && species.types.includes('Water')) return 'offense';
+  if (style === 'stall') return 'bulky';
+  if (style === 'rain' && (species.types.includes('Water') || abilityIds.some((id) => id === 'drizzle' || id === 'swiftswim'))) return 'offense';
+  if (style === 'sun' && (species.types.includes('Fire') || species.types.includes('Grass') || abilityIds.some((id) => id === 'drought' || id === 'chlorophyll' || id === 'solarpower' || id === 'protosynthesis'))) return 'offense';
+  if (style === 'sand' && (species.types.some((type) => ['Ground', 'Rock', 'Steel'].includes(type)) || abilityIds.some((id) => id === 'sandstream' || id === 'sandrush' || id === 'sandforce'))) return 'bulky';
   if (style === 'trick-room' || species.baseStats.spe <= 70) return 'bulky';
   if (Math.max(species.baseStats.atk, species.baseStats.spa) >= 115 || species.baseStats.spe >= 100) return 'offense';
   if (species.baseStats.hp + Math.max(species.baseStats.def, species.baseStats.spd) >= 190) return 'bulky';
@@ -184,6 +195,7 @@ function buildFallbackAnchorMoves(speciesName: string, dex: SpeciesDexPort, role
   if (roleHint === 'hazard-control') pushByName(BUILD_HAZARD_MOVES);
   if (roleHint === 'pivot') pushByName(BUILD_PIVOT_MOVES);
   if (roleHint === 'bulky') pushByName(BUILD_RECOVERY_MOVES);
+  if (roleHint === 'offense' || roleHint === 'speed') pushByName(BUILD_PRIORITY_MOVES);
   pushByName(BUILD_SUPPORT_MOVES);
 
   const damagingMoves = learnableMoves
@@ -268,6 +280,18 @@ function inferMissingRolesFromAnchors(seedTeam: Team, report: Awaited<ReturnType
     inferred.delete('pivot');
   }
 
+  if (isBssLikeFormat(seedTeam.format)) {
+    inferred.delete('hazard removal');
+
+    if (!report.speed.hasSpeedControl) {
+      inferred.add('speed control');
+    }
+
+    if ((report.archetypes?.weakMatchups ?? []).some((label) => normalize(label).includes('stall') || normalize(label).includes('fat'))) {
+      inferred.add('stallbreaker');
+    }
+  }
+
   return [...inferred];
 }
 
@@ -305,6 +329,95 @@ function scoreClassicTypeCoreFit(
         notes.push(`The builder is also patching typical ${core.name} pressure lines such as ${core.pressureTypes.join(' and ')} attacks.`);
       }
     }
+  }
+
+  return {
+    score,
+    reasons: Array.from(new Set(reasons)),
+    notes: Array.from(new Set(notes)),
+  };
+}
+
+function scoreGuideDrivenBssFit(
+  candidate: NonNullable<ReturnType<SpeciesDexPort['getSpecies']>>,
+  seedTeam: Team,
+  report: Awaited<ReturnType<typeof analyzeTeam>>,
+  format: string,
+  style: BuildConstraints['style'],
+  dex: SpeciesDexPort,
+): { score: number; reasons: string[]; notes: string[] } {
+  if (!isBssLikeFormat(format)) return { score: 0, reasons: [], notes: [] };
+
+  const offense = Math.max(candidate.baseStats.atk, candidate.baseStats.spa);
+  const bulk = candidate.baseStats.hp + Math.max(candidate.baseStats.def, candidate.baseStats.spd);
+  const hasPivot = canLearnAnyMove(candidate.name, BUILD_PIVOT_MOVES, dex);
+  const hasDisruption = canLearnAnyMove(candidate.name, BUILD_SUPPORT_MOVES, dex);
+  const hasPriority = canLearnAnyMove(candidate.name, BUILD_PRIORITY_MOVES, dex);
+  const weakMatchups = report.archetypes?.weakMatchups ?? [];
+  const pressureThreats = report.threats?.topPressureThreats ?? [];
+
+  let score = 0;
+  const reasons: string[] = [];
+  const notes: string[] = [];
+
+  if (report.battlePlan.speedControlRating === 'poor') {
+    if (candidate.baseStats.spe >= 100) {
+      score += 8;
+      reasons.push('gives the shell a clearer speed benchmark for BSS');
+    } else if (hasPriority) {
+      score += 5;
+      reasons.push('adds emergency priority for short BSS endgames');
+    }
+  }
+
+  if ((hasPivot || hasDisruption) && (candidate.baseStats.spe >= 90 || bulk >= 180)) {
+    score += 5;
+    reasons.push('fits a real bring-3 shell as a safe lead or pivot');
+    notes.push('Bring-3 scoring now prefers realistic lead plus backline shells, not just six individually strong picks.');
+  }
+
+  if (weakMatchups.some((label) => normalize(label).includes('setup')) && hasDisruption) {
+    score += 4;
+    reasons.push('adds anti-setup counterplay that matters in BSS');
+  }
+
+  if (weakMatchups.some((label) => normalize(label).includes('stall') || normalize(label).includes('fat')) && (hasDisruption || offense >= 120)) {
+    score += 6;
+    reasons.push('helps avoid passive lines into stall or fat builds');
+  }
+
+  const patchedThreats = pressureThreats
+    .slice(0, 5)
+    .map((threat) => dex.getSpecies(threat.species))
+    .filter((species): species is NonNullable<ReturnType<SpeciesDexPort['getSpecies']>> => Boolean(species))
+    .filter((threat) => threat.types.some((type) => dex.getTypeEffectiveness(type, candidate.types) < 1)
+      || candidate.types.some((type) => dex.getTypeEffectiveness(type, threat.types) > 1))
+    .map((threat) => threat.name);
+
+  if (patchedThreats.length > 0) {
+    score += Math.min(8, patchedThreats.length * 2);
+    reasons.push(`patches live BSS pressure from ${patchedThreats.slice(0, 2).join(', ')}`);
+    notes.push('Top-format threats from the live ladder are now part of the completion scoring.');
+  }
+
+  if (style === 'hyper-offense' && (candidate.baseStats.spe >= 110 || offense >= 125 || hasPriority)) {
+    score += 4;
+    reasons.push('supports a proactive snowball gameplan');
+  }
+
+  if (style === 'bulky-offense' && offense >= 105 && bulk >= 175) {
+    score += 4;
+    reasons.push('matches the bulky offense pacing from the guide');
+  }
+
+  if (style === 'balance' && (hasPivot || (bulk >= 185 && hasDisruption))) {
+    score += 4;
+    reasons.push('gives the core a safer defensive switch pattern');
+  }
+
+  if (style === 'stall' && bulk >= 195 && (hasDisruption || canLearnAnyMove(candidate.name, BUILD_RECOVERY_MOVES, dex))) {
+    score += 6;
+    reasons.push('fits a slower coverage-first stall structure');
   }
 
   return {
@@ -769,12 +882,16 @@ function matchesStyle(speciesName: string, style: BuildConstraints['style'], dex
 
   const offense = Math.max(species.baseStats.atk, species.baseStats.spa);
   const bulk = species.baseStats.hp + Math.max(species.baseStats.def, species.baseStats.spd);
+  const abilityIds = species.abilities.map(toId);
 
   if (style === 'hyper-offense') return offense >= 110 || species.baseStats.spe >= 100;
   if (style === 'bulky-offense') return offense >= 105 && bulk >= 165;
   if (style === 'balance') return bulk >= 175 || (offense >= 95 && species.baseStats.spe >= 75 && species.baseStats.spe <= 110);
+  if (style === 'stall') return bulk >= 185 && (canLearnAnyMove(species.name, BUILD_RECOVERY_MOVES, dex) || canLearnAnyMove(species.name, BUILD_SUPPORT_MOVES, dex));
   if (style === 'trick-room') return species.baseStats.spe <= 80 && offense >= 100;
-  if (style === 'rain') return species.types.includes('Water') || species.abilities.some((ability) => normalize(ability).includes('rain') || normalize(ability).includes('swift swim'));
+  if (style === 'rain') return species.types.includes('Water') || abilityIds.some((id) => id === 'drizzle' || id === 'swiftswim');
+  if (style === 'sun') return species.types.includes('Fire') || species.types.includes('Grass') || abilityIds.some((id) => id === 'drought' || id === 'chlorophyll' || id === 'solarpower' || id === 'protosynthesis');
+  if (style === 'sand') return species.types.some((type) => ['Ground', 'Rock', 'Steel'].includes(type)) || abilityIds.some((id) => id === 'sandstream' || id === 'sandrush' || id === 'sandforce');
 
   return true;
 }
@@ -813,14 +930,16 @@ export async function buildWithConstraints(constraints: BuildConstraints, deps: 
     .map((species) => {
       let score = Math.round(getUsageWeight(constraints.format, species.name) * 12);
       const reasons: string[] = [];
+      const abilityIds = species.abilities.map(toId);
       const anchorFit = scoreAnchorFit(species, seedTeam, constraints.format, deps.dex, constraints.style);
+      const guideFit = scoreGuideDrivenBssFit(species, seedTeam, report, constraints.format, constraints.style, deps.dex);
 
-      score += anchorFit.score;
-      reasons.push(...anchorFit.reasons);
+      score += anchorFit.score + guideFit.score;
+      reasons.push(...anchorFit.reasons, ...guideFit.reasons);
 
-      if (missingRoles.some((role) => normalize(role).includes('speed')) && species.baseStats.spe >= 100) {
-        score += 7;
-        reasons.push('helps patch missing speed control');
+      if (missingRoles.some((role) => normalize(role).includes('speed')) && (species.baseStats.spe >= 100 || canLearnAnyMove(species.name, BUILD_PRIORITY_MOVES, deps.dex))) {
+        score += species.baseStats.spe >= 100 ? 7 : 4;
+        reasons.push(species.baseStats.spe >= 100 ? 'helps patch missing speed control' : 'adds useful priority insurance');
       }
 
       if (missingRoles.some((role) => normalize(role).includes('pivot')) && canLearnAnyMove(species.name, BUILD_PIVOT_MOVES, deps.dex)) {
@@ -828,9 +947,14 @@ export async function buildWithConstraints(constraints: BuildConstraints, deps: 
         reasons.push('improves positioning and bring flexibility');
       }
 
+      if (missingRoles.some((role) => normalize(role).includes('stall')) && (canLearnAnyMove(species.name, BUILD_SUPPORT_MOVES, deps.dex) || Math.max(species.baseStats.atk, species.baseStats.spa) >= 120)) {
+        score += 5;
+        reasons.push('gives the core a more reliable stallbreaking line');
+      }
+
       if (missingRoles.some((role) => normalize(role).includes('hazard')) && canLearnAnyMove(species.name, BUILD_HAZARD_MOVES, deps.dex)) {
-        score += 6;
-        reasons.push('patches the current hazard game');
+        score += isBssLikeFormat(constraints.format) ? 2 : 6;
+        reasons.push(isBssLikeFormat(constraints.format) ? 'adds optional field pressure without warping bring-3 plans' : 'patches the current hazard game');
       }
 
       if (missingRoles.some((role) => normalize(role).includes('wall')) && species.baseStats.hp + Math.max(species.baseStats.def, species.baseStats.spd) >= 190) {
@@ -843,9 +967,24 @@ export async function buildWithConstraints(constraints: BuildConstraints, deps: 
         reasons.push('fits a Trick Room pace naturally');
       }
 
-      if (constraints.style === 'rain' && species.types.includes('Water')) {
+      if (constraints.style === 'rain' && (species.types.includes('Water') || abilityIds.some((id) => id === 'drizzle' || id === 'swiftswim'))) {
         score += 5;
         reasons.push('slots naturally into a rain shell');
+      }
+
+      if (constraints.style === 'sun' && (species.types.includes('Fire') || species.types.includes('Grass') || abilityIds.some((id) => id === 'drought' || id === 'chlorophyll' || id === 'solarpower' || id === 'protosynthesis'))) {
+        score += 5;
+        reasons.push('slots naturally into a sun shell');
+      }
+
+      if (constraints.style === 'sand' && (species.types.some((type) => ['Ground', 'Rock', 'Steel'].includes(type)) || abilityIds.some((id) => id === 'sandstream' || id === 'sandrush' || id === 'sandforce'))) {
+        score += 5;
+        reasons.push('slots naturally into a sand shell');
+      }
+
+      if (constraints.style === 'stall' && canLearnAnyMove(species.name, [...BUILD_RECOVERY_MOVES, ...BUILD_SUPPORT_MOVES], deps.dex)) {
+        score += 5;
+        reasons.push('fits a slower coverage-first plan');
       }
 
       const preview = getCompetitiveSetPreview(species.name, constraints.format, deps.dex, deps.validator, {
@@ -873,6 +1012,12 @@ export async function buildWithConstraints(constraints: BuildConstraints, deps: 
     notes: [
       anchors.length ? 'The current recommendations were built around the requested anchor core.' : 'No anchor core was supplied, so results focus on general live-meta fit.',
       anchors.length ? 'Scoring now rewards live teammate synergy, defensive coverage, and support value for the requested anchors.' : 'Recommendations are usage-weighted and role-aware.',
+      ...(isBssLikeFormat(constraints.format)
+        ? [
+            'The BSS teambuilding guide is now reflected in scoring: bring-3 shells, safe leads or pivots, speed control or priority, and matchup patching matter more than generic hazards.',
+            `Current live pressure points include ${(report.threats.topPressureThreats ?? []).slice(0, 3).map((threat) => threat.species).join(', ') || 'the usual top threats'}.`,
+          ]
+        : []),
       constraints.allowRestricted ? 'Restricted-level options were left available.' : 'Very high-BST restricted options were filtered out by default.',
     ],
   };

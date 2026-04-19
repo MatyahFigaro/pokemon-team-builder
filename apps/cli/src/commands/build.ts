@@ -16,7 +16,7 @@ export function registerBuildCommand(program: Command): void {
     .option('-f, --file <path>', 'Optional partial team text file to use as the core')
     .option('--format <format>', 'Showdown format id', 'gen9ou')
     .option('--core <species>', 'Comma-separated anchor species using exact legal names from list-pokemon, including full Mega names, for example Dragonite,Charizard-Mega-X')
-    .option('--style <style>', 'Preferred style: balance, hyper-offense, bulky-offense, trick-room, rain')
+    .option('--style <style>', 'Preferred style: balance, hyper-offense, bulky-offense, stall, trick-room, rain, sun, sand')
     .option('--avoid <species>', 'Comma-separated species to avoid')
     .option('--allow-restricted', 'Allow restricted high-BST options')
     .option('--json', 'Print raw JSON instead of a formatted report')
@@ -24,7 +24,7 @@ export function registerBuildCommand(program: Command): void {
       file?: string;
       format: string;
       core?: string;
-      style?: 'balance' | 'hyper-offense' | 'bulky-offense' | 'trick-room' | 'rain';
+      style?: 'balance' | 'hyper-offense' | 'bulky-offense' | 'stall' | 'trick-room' | 'rain' | 'sun' | 'sand';
       avoid?: string;
       allowRestricted?: boolean;
       json?: boolean;
