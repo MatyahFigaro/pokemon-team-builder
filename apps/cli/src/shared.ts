@@ -56,6 +56,14 @@ export function formatAnalysisReport(report: AnalysisReport): string {
     .map((entry) => `${entry.type} (${entry.weakCount} weak)`)
     .join(', ') || 'None';
 
+  const legalityNotes = report.legality.warnings.length
+    ? [
+        '',
+        'Legality notes',
+        ...report.legality.warnings.map((warning) => `- ${warning}`),
+      ]
+    : [];
+
   const issueLines = report.issues.length
     ? report.issues.map((issue) => `- [${issue.severity}] ${issue.summary}`).join('\n')
     : '- No major structural issues found.';
@@ -63,6 +71,7 @@ export function formatAnalysisReport(report: AnalysisReport): string {
   return [
     `Format: ${report.format}`,
     `Legality: ${report.legality.valid ? 'valid' : 'invalid'}`,
+    ...legalityNotes,
     `Score: ${report.score.total}/100`,
     `Speed: avg ${report.speed.averageBaseSpeed}, fastest ${report.speed.fastestBaseSpeed}`,
     `Hazards: setter=${report.synergy.hasHazardSetter} removal=${report.synergy.hasHazardRemoval}`,

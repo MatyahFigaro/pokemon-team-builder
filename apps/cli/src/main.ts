@@ -3,6 +3,8 @@
 import { Command } from 'commander';
 
 import { registerAnalyzeCommand } from './commands/analyze.js';
+import { registerListFormatsCommand } from './commands/list-formats.js';
+import { registerListPokemonCommand } from './commands/list-pokemon.js';
 import { registerNormalizeCommand } from './commands/normalize.js';
 import { registerSimMatchupCommand } from './commands/sim-matchup.js';
 import { registerSuggestCompleteCommand } from './commands/suggest-complete.js';
@@ -16,6 +18,8 @@ program
   .version('0.1.0');
 
 registerAnalyzeCommand(program);
+registerListFormatsCommand(program);
+registerListPokemonCommand(program);
 registerSuggestPatchCommand(program);
 registerSuggestCompleteCommand(program);
 registerSimMatchupCommand(program);

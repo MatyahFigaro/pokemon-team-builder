@@ -5,7 +5,7 @@ import type { FormatId, Team, TeamCodecPort } from '@pokemon/domain';
 import { fromShowdownSet, toShowdownTeam } from './mappers.js';
 
 const require = createRequire(import.meta.url);
-const showdown = require('pokemon-showdown') as typeof import('pokemon-showdown');
+const showdown = require('pokemon-showdown') as any;
 const { Teams } = showdown;
 
 export class ShowdownTeamCodecAdapter implements TeamCodecPort {
