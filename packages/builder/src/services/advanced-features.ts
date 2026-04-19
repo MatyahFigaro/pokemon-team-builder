@@ -77,6 +77,10 @@ export interface ConstrainedBuildReport {
   notes: string[];
 }
 
+function isPromiseLike<T>(value: T | Promise<T>): value is Promise<T> {
+  return typeof (value as Promise<T> | undefined)?.then === 'function';
+}
+
 function normalize(value: string | undefined): string {
   return (value ?? '').trim().toLowerCase();
 }
@@ -99,6 +103,11 @@ function formatStatSpread(stats?: PokemonSet['evs']): string {
   return parts.length ? parts.join(' / ') : 'default spread';
 }
 
+const BUILD_HAZARD_MOVES = ['Stealth Rock', 'Spikes', 'Toxic Spikes', 'Sticky Web'];
+const BUILD_PIVOT_MOVES = ['U-turn', 'Volt Switch', 'Parting Shot', 'Flip Turn', 'Teleport', 'Chilly Reception'];
+const BUILD_RECOVERY_MOVES = ['Recover', 'Roost', 'Slack Off', 'Soft-Boiled', 'Moonlight', 'Morning Sun', 'Synthesis', 'Rest'];
+const BUILD_SUPPORT_MOVES = ['Will-O-Wisp', 'Thunder Wave', 'Yawn', 'Encore', 'Taunt', 'Trick Room'];
+
 function getRoleHint(roles: string[]): PreviewRoleHint {
   if (roles.includes('hazard-removal')) return 'hazard-control';
   if (roles.includes('pivot')) return 'pivot';
@@ -106,6 +115,190 @@ function getRoleHint(roles: string[]): PreviewRoleHint {
   if (roles.includes('physical-wall') || roles.includes('special-wall')) return 'bulky';
   if (roles.includes('setup-sweeper')) return 'offense';
   return 'default';
+}
+
+function canLearnAnyMove(speciesName: string, moveNames: string[], dex: SpeciesDexPort): boolean {
+  return moveNames.some((moveName) => dex.canLearnMove(speciesName, moveName));
+}
+
+function getBuildRoleHint(speciesName: string, dex: SpeciesDexPort, style?: BuildConstraints['style']): PreviewRoleHint {
+  const species = dex.getSpecies(speciesName);
+  if (!species) return 'default';
+
+  if (canLearnAnyMove(speciesName, BUILD_PIVOT_MOVES, dex)) return 'pivot';
+  if (canLearnAnyMove(speciesName, BUILD_HAZARD_MOVES, dex)) return 'hazard-control';
+  if (style === 'rain' && species.types.includes('Water')) return 'offense';
+  if (style === 'trick-room' || species.baseStats.spe <= 70) return 'bulky';
+  if (Math.max(species.baseStats.atk, species.baseStats.spa) >= 115 || species.baseStats.spe >= 100) return 'offense';
+  if (species.baseStats.hp + Math.max(species.baseStats.def, species.baseStats.spd) >= 190) return 'bulky';
+
+  return 'default';
+}
+
+function buildFallbackAnchorMoves(speciesName: string, dex: SpeciesDexPort, roleHint: PreviewRoleHint): string[] {
+  const species = dex.getSpecies(speciesName);
+  if (!species) return [];
+
+  const learnableMoves = dex.getLearnableMoves(speciesName);
+  const moveMap = new Map(learnableMoves.map((move) => [toId(move.name), move]));
+  const preferredCategory = species.baseStats.spa > species.baseStats.atk ? 'Special' : 'Physical';
+  const chosen: string[] = [];
+
+  const pushByName = (moveNames: string[]) => {
+    for (const moveName of moveNames) {
+      const move = moveMap.get(toId(moveName));
+      if (!move || chosen.includes(move.name)) continue;
+      chosen.push(move.name);
+      if (chosen.length >= 4) break;
+    }
+  };
+
+  if (roleHint === 'hazard-control') pushByName(BUILD_HAZARD_MOVES);
+  if (roleHint === 'pivot') pushByName(BUILD_PIVOT_MOVES);
+  if (roleHint === 'bulky') pushByName(BUILD_RECOVERY_MOVES);
+  pushByName(BUILD_SUPPORT_MOVES);
+
+  const damagingMoves = learnableMoves
+    .filter((move) => move.category !== 'Status' && (move.basePower ?? 0) >= 50)
+    .sort((left, right) => {
+      const leftStab = species.types.includes(left.type) ? 25 : 0;
+      const rightStab = species.types.includes(right.type) ? 25 : 0;
+      const leftStat = left.category === preferredCategory ? 15 : 0;
+      const rightStat = right.category === preferredCategory ? 15 : 0;
+      return ((right.basePower ?? 0) + rightStab + rightStat) - ((left.basePower ?? 0) + leftStab + leftStat);
+    });
+
+  for (const move of damagingMoves) {
+    if (chosen.length >= 4) break;
+    if (!chosen.includes(move.name)) chosen.push(move.name);
+  }
+
+  return chosen.slice(0, 4);
+}
+
+function buildAnchorSeedSet(
+  speciesName: string,
+  format: string,
+  dex: SpeciesDexPort,
+  validator: ValidationPort,
+  roleHint: PreviewRoleHint,
+): PokemonSet | null {
+  const species = dex.getSpecies(speciesName);
+  if (!species) return null;
+
+  const ability = species.abilities[0] ?? '';
+  const moves = buildFallbackAnchorMoves(speciesName, dex, roleHint);
+  if (!ability || moves.length === 0) return null;
+
+  const nature = roleHint === 'bulky'
+    ? (species.baseStats.def >= species.baseStats.spd ? 'Impish' : 'Careful')
+    : (species.baseStats.spa > species.baseStats.atk ? 'Modest' : 'Adamant');
+  const evs = roleHint === 'bulky'
+    ? { hp: 252, def: species.baseStats.def >= species.baseStats.spd ? 252 : 4, spd: species.baseStats.def >= species.baseStats.spd ? 4 : 252 }
+    : (species.baseStats.spa > species.baseStats.atk ? { spa: 252, spe: 252, hp: 4 } : { atk: 252, spe: 252, hp: 4 });
+  const items = Array.from(new Set([species.requiredItem, 'Leftovers', 'Sitrus Berry', 'Focus Sash', 'Life Orb', 'Rocky Helmet'].filter(Boolean))) as string[];
+
+  for (const item of items) {
+    const set: PokemonSet = {
+      species: species.name,
+      item,
+      ability,
+      nature,
+      moves,
+      level: 50,
+      evs,
+    };
+
+    const result = validator.validateSet(set, format);
+    if (isPromiseLike(result)) continue;
+    if (result.valid) return result.normalizedSet ?? set;
+  }
+
+  const basicSet: PokemonSet = {
+    species: species.name,
+    ability,
+    nature,
+    moves,
+    level: 50,
+    evs,
+  };
+
+  const fallbackResult = validator.validateSet(basicSet, format);
+  if (isPromiseLike(fallbackResult)) return basicSet;
+  return fallbackResult.valid ? (fallbackResult.normalizedSet ?? basicSet) : basicSet;
+}
+
+function inferMissingRolesFromAnchors(seedTeam: Team, report: Awaited<ReturnType<typeof analyzeTeam>>, dex: SpeciesDexPort): string[] {
+  const inferred = new Set(report.synergy.missingRoles);
+  const anchorSpecies = seedTeam.members.map((member) => member.species);
+
+  if (anchorSpecies.some((speciesName) => canLearnAnyMove(speciesName, BUILD_HAZARD_MOVES, dex))) {
+    inferred.delete('hazard setter');
+  }
+
+  if (anchorSpecies.some((speciesName) => canLearnAnyMove(speciesName, BUILD_PIVOT_MOVES, dex))) {
+    inferred.delete('pivot');
+  }
+
+  return [...inferred];
+}
+
+function scoreAnchorFit(
+  candidate: NonNullable<ReturnType<SpeciesDexPort['getSpecies']>>,
+  seedTeam: Team,
+  format: string,
+  dex: SpeciesDexPort,
+): { score: number; reasons: string[] } {
+  if (seedTeam.members.length === 0) return { score: 0, reasons: [] };
+
+  const anchorIds = new Set(seedTeam.members.map((member) => toId(member.species)));
+  const anchorTypes = new Set(seedTeam.members.flatMap((member) => dex.getSpecies(member.species)?.types ?? []));
+  const usageRecord = getSpeciesUsage(format, candidate.name);
+  const teammateMatches = (usageRecord?.teammates ?? []).filter((ally) => anchorIds.has(toId(ally.name)));
+
+  let score = teammateMatches.length * 4;
+  const reasons: string[] = [];
+
+  if (teammateMatches.length > 0) {
+    reasons.push(`shows live teammate synergy with ${teammateMatches.slice(0, 2).map((ally) => ally.name).join(', ')}`);
+  }
+
+  const coveredTypes = new Set<string>();
+  for (const anchor of seedTeam.members) {
+    for (const type of dex.listTypes()) {
+      const anchorWeak = dex.getMatchupMultiplier(type, anchor, format) > 1;
+      const candidateCheck = dex.getTypeEffectiveness(type, candidate.types);
+      if (anchorWeak && candidateCheck < 1) {
+        coveredTypes.add(type);
+      }
+    }
+  }
+
+  if (coveredTypes.size > 0) {
+    score += Math.min(8, coveredTypes.size * 2);
+    reasons.push(`covers anchor pressure from ${[...coveredTypes].slice(0, 3).join(', ')}`);
+  }
+
+  const freshTypes = candidate.types.filter((type) => !anchorTypes.has(type));
+  if (freshTypes.length > 0) {
+    score += Math.min(4, freshTypes.length * 2);
+    reasons.push('broadens the anchor core type coverage');
+  }
+
+  if (canLearnAnyMove(candidate.name, BUILD_PIVOT_MOVES, dex)) {
+    score += 3;
+    reasons.push('can bring the anchors in safely');
+  }
+
+  if (canLearnAnyMove(candidate.name, BUILD_HAZARD_MOVES, dex)) {
+    score += 2;
+    reasons.push('adds valuable support for anchor endgames');
+  }
+
+  return {
+    score,
+    reasons: Array.from(new Set(reasons)),
+  };
 }
 
 function getBestDamagingMove(attackerSet: PokemonSet, defenderSet: PokemonSet, dex: SpeciesDexPort, format: string) {
@@ -513,7 +706,11 @@ export async function buildWithConstraints(constraints: BuildConstraints, deps: 
   const anchors = (constraints.coreSpecies ?? []).filter(Boolean);
   const avoid = new Set((constraints.avoidSpecies ?? []).map(toId));
   const seedMembers = anchors
-    .map((speciesName) => getCompetitiveSet(speciesName, constraints.format, deps.dex, deps.validator, { roleHint: 'default' }))
+    .map((speciesName) => {
+      const roleHint = getBuildRoleHint(speciesName, deps.dex, constraints.style);
+      return getCompetitiveSet(speciesName, constraints.format, deps.dex, deps.validator, { roleHint })
+        ?? buildAnchorSeedSet(speciesName, constraints.format, deps.dex, deps.validator, roleHint);
+    })
     .filter((set): set is PokemonSet => Boolean(set));
 
   const seedTeam: Team = {
@@ -523,6 +720,7 @@ export async function buildWithConstraints(constraints: BuildConstraints, deps: 
   };
 
   const report = await analyzeTeam(seedTeam, deps);
+  const missingRoles = inferMissingRolesFromAnchors(seedTeam, report, deps.dex);
   const existing = new Set(seedTeam.members.map((member) => toId(member.species)));
   const available = deps.dex.listAvailableSpecies(constraints.format);
 
@@ -534,18 +732,27 @@ export async function buildWithConstraints(constraints: BuildConstraints, deps: 
     .map((species) => {
       let score = Math.round(getUsageWeight(constraints.format, species.name) * 12);
       const reasons: string[] = [];
+      const anchorFit = scoreAnchorFit(species, seedTeam, constraints.format, deps.dex);
 
-      if (report.synergy.missingRoles.some((role) => normalize(role).includes('speed')) && species.baseStats.spe >= 100) {
+      score += anchorFit.score;
+      reasons.push(...anchorFit.reasons);
+
+      if (missingRoles.some((role) => normalize(role).includes('speed')) && species.baseStats.spe >= 100) {
         score += 7;
         reasons.push('helps patch missing speed control');
       }
 
-      if (report.synergy.missingRoles.some((role) => normalize(role).includes('pivot')) && species.baseStats.spe >= 75) {
-        score += 4;
+      if (missingRoles.some((role) => normalize(role).includes('pivot')) && canLearnAnyMove(species.name, BUILD_PIVOT_MOVES, deps.dex)) {
+        score += 6;
         reasons.push('improves positioning and bring flexibility');
       }
 
-      if (report.synergy.missingRoles.some((role) => normalize(role).includes('wall')) && species.baseStats.hp + Math.max(species.baseStats.def, species.baseStats.spd) >= 190) {
+      if (missingRoles.some((role) => normalize(role).includes('hazard')) && canLearnAnyMove(species.name, BUILD_HAZARD_MOVES, deps.dex)) {
+        score += 6;
+        reasons.push('patches the current hazard game');
+      }
+
+      if (missingRoles.some((role) => normalize(role).includes('wall')) && species.baseStats.hp + Math.max(species.baseStats.def, species.baseStats.spd) >= 190) {
         score += 6;
         reasons.push('adds sturdier defensive padding');
       }
@@ -560,27 +767,30 @@ export async function buildWithConstraints(constraints: BuildConstraints, deps: 
         reasons.push('slots naturally into a rain shell');
       }
 
-      const preview = getCompetitiveSetPreview(species.name, constraints.format, deps.dex, deps.validator);
+      const preview = getCompetitiveSetPreview(species.name, constraints.format, deps.dex, deps.validator, {
+        roleHint: getBuildRoleHint(species.name, deps.dex, constraints.style),
+      });
       if (preview) score += 3;
 
       return {
         species: species.name,
         score,
-        reasons: reasons.length ? reasons : ['high legal fit with current usage and coverage needs'],
+        reasons: (reasons.length ? Array.from(new Set(reasons)) : ['high legal fit with current usage and coverage needs']).slice(0, 3),
         preview,
       } satisfies BuildRecommendation;
     })
-    .sort((left, right) => right.score - left.score)
+    .sort((left, right) => right.score - left.score || left.species.localeCompare(right.species))
     .slice(0, Math.max(1, 6 - seedTeam.members.length));
 
   return {
     format: constraints.format,
     style: constraints.style ?? 'balanced-flex',
     anchors,
-    missingRoles: report.synergy.missingRoles,
+    missingRoles,
     recommendations,
     notes: [
       anchors.length ? 'The current recommendations were built around the requested anchor core.' : 'No anchor core was supplied, so results focus on general live-meta fit.',
+      anchors.length ? 'Scoring now rewards live teammate synergy, defensive coverage, and support value for the requested anchors.' : 'Recommendations are usage-weighted and role-aware.',
       constraints.allowRestricted ? 'Restricted-level options were left available.' : 'Very high-BST restricted options were filtered out by default.',
     ],
   };
