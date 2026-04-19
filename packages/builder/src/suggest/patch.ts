@@ -1,5 +1,5 @@
 import type { AnalysisReport, SpeciesDexPort, Suggestion, Team, TeamIssue, ValidationPort } from '@pokemon/domain';
-import { getSpeciesUsage, getUsageWeight, listManualSets } from '@pokemon/storage';
+import { getSpeciesUsage, getUsageWeight } from '@pokemon/storage';
 
 import { getCompetitiveSetPreview, prioritizePreviewableCandidates, type PreviewRoleHint } from './legal-preview.js';
 
@@ -162,13 +162,11 @@ function rankFromLegalPool(
   const teamSpecies = new Set(team.members.map((member) => normalize(member.species)));
   const anchorSpecies = getBringAnchors(team, report);
   const anchorTypes = new Set(anchorSpecies.flatMap((name) => dex.getSpecies(name)?.types ?? []));
-  const manualSpecies = new Set(listManualSets({ format: team.format }).map((record) => normalize(record.species || record.set.species)));
 
   return legalPool
     .filter((species) => !teamSpecies.has(normalize(species.name)))
     .map((species) => {
       let score = scoreCandidate(species.name, team, report, dex, options) + getThreatAnswerBoost(species.name, report, dex);
-      if (manualSpecies.has(normalize(species.name))) score += report.profile.style === 'bss' ? 8 : 5;
 
       if (report.profile.style === 'bss') {
         if (report.battlePlan.speedControlRating === 'poor' && species.baseStats.spe >= 100) score += 6;

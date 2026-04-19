@@ -1,5 +1,5 @@
 import type { AnalysisReport, SpeciesDexPort, Suggestion, Team, ValidationPort } from '@pokemon/domain';
-import { getSpeciesUsage, getUsageWeight, listManualSets } from '@pokemon/storage';
+import { getSpeciesUsage, getUsageWeight } from '@pokemon/storage';
 
 import { getCompetitiveSetPreview, prioritizePreviewableCandidates, type PreviewRoleHint } from './legal-preview.js';
 
@@ -112,7 +112,6 @@ function rankCompletionCandidates(team: Team, report: AnalysisReport, dex: Speci
   const anchorSpecies = getBringAnchors(team, report);
   const anchorTypes = new Set(anchorSpecies.flatMap((name) => dex.getSpecies(name)?.types ?? []));
   const weakArchetypes = report.archetypes.weakMatchups.map((entry) => normalize(entry));
-  const manualSpecies = new Set(listManualSets({ format: team.format }).map((record) => normalize(record.species || record.set.species)));
 
   return legalPool
     .filter((species) => !existing.has(normalize(species.name)))
@@ -132,7 +131,6 @@ function rankCompletionCandidates(team: Team, report: AnalysisReport, dex: Speci
       if (Math.max(species.baseStats.atk, species.baseStats.spa) >= 120) score += 4;
       score += Math.round(usageWeight * (report.profile.style === 'bss' ? 12 : 8));
       score += teammateSynergyHits * (report.profile.style === 'bss' ? 3 : 2);
-      if (manualSpecies.has(normalize(species.name))) score += report.profile.style === 'bss' ? 8 : 5;
 
       if (topWeakType) {
         const multiplier = dex.getTypeEffectiveness(topWeakType, species.types);
