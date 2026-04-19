@@ -208,7 +208,17 @@ function uniqueStrings(values: string[]): string[] {
 }
 
 function buildThreatSimulationTeam(format: string, dex: SpeciesDexPort, validator: ValidationPort): Team | null {
-  const members = getTopUsageThreatNames(format, 8)
+  const snapshot = getUsageAnalyticsForFormat(format);
+  const topCluster = snapshot?.species.length
+    ? uniqueStrings(
+      snapshot.species.slice(0, 4).flatMap((entry, index) => [
+        entry.species,
+        ...getTopUsageNames(entry.teammates, index === 0 ? 2 : 1),
+      ]),
+    )
+    : getTopUsageThreatNames(format, 8);
+
+  const members = topCluster
     .map((speciesName) => getCompetitiveSet(speciesName, format, dex, validator, {
       roleHint: getBuildRoleHint(speciesName, dex),
     }))
@@ -221,6 +231,19 @@ function buildThreatSimulationTeam(format: string, dex: SpeciesDexPort, validato
     format,
     source: 'generated',
     members,
+  };
+}
+
+function hydrateTeamForSimulation(team: Team, deps: AnalyzeTeamDeps): Team {
+  return {
+    ...team,
+    members: team.members.map((member) => {
+      if (member.moves.length >= 4 && member.item && member.ability) return member;
+
+      return getCompetitiveSet(member.species, team.format, deps.dex, deps.validator, {
+        roleHint: getBuildRoleHint(member.species, deps.dex),
+      }) ?? member;
+    }),
   };
 }
 
@@ -816,10 +839,13 @@ export async function planBringFromPreview(team: Team, opponent: Team | null, de
   ];
 
   if (deps.simulator) {
+    const simulationTeam = hydrateTeamForSimulation(team, deps);
+    const simulationOpponent = hydrateTeamForSimulation(opponent, deps);
+
     const simSummary = await deps.simulator.simulateMatchup({
       format: team.format,
-      team,
-      opponent,
+      team: simulationTeam,
+      opponent: simulationOpponent,
       iterations: 12,
     });
 
@@ -1030,9 +1056,17 @@ function matchesStyle(speciesName: string, style: BuildConstraints['style'], dex
   const offense = Math.max(species.baseStats.atk, species.baseStats.spa);
   const bulk = species.baseStats.hp + Math.max(species.baseStats.def, species.baseStats.spd);
   const abilityIds = species.abilities.map(toId);
+  const hasPriority = canLearnAnyMove(species.name, BUILD_PRIORITY_MOVES, dex);
+  const hasPivot = canLearnAnyMove(species.name, BUILD_PIVOT_MOVES, dex);
+  const hasSetup = canLearnAnyMove(species.name, ['Dragon Dance', 'Swords Dance', 'Nasty Plot', 'Calm Mind', 'Bulk Up', 'Agility', 'Rock Polish', 'Quiver Dance', 'Trailblaze'], dex);
 
-  if (style === 'hyper-offense') return offense >= 110 || species.baseStats.spe >= 100;
-  if (style === 'bulky-offense') return offense >= 105 && bulk >= 165;
+  if (style === 'hyper-offense') {
+    return offense >= 105
+      || (species.baseStats.spe >= 105 && (offense >= 90 || hasSetup || hasPriority || hasPivot))
+      || (hasPriority && offense >= 95)
+      || abilityIds.some((id) => ['protosynthesis', 'quarkdrive', 'moxie', 'supremeoverlord', 'contrary', 'beastboost'].includes(id));
+  }
+  if (style === 'bulky-offense') return offense >= 100 && bulk >= 165;
   if (style === 'balance') return bulk >= 175 || (offense >= 95 && species.baseStats.spe >= 75 && species.baseStats.spe <= 110);
   if (style === 'stall') return bulk >= 185 && (canLearnAnyMove(species.name, BUILD_RECOVERY_MOVES, dex) || canLearnAnyMove(species.name, BUILD_SUPPORT_MOVES, dex));
   if (style === 'trick-room') return species.baseStats.spe <= 80 && offense >= 100;
@@ -1147,6 +1181,18 @@ export async function buildWithConstraints(constraints: BuildConstraints, deps: 
     .filter((species) => !avoid.has(toId(species.name)))
     .filter((species) => constraints.allowRestricted ? true : species.bst < 671)
     .filter((species) => matchesStyle(species.name, constraints.style, deps.dex, constraints.format))
+    .filter((species) => {
+      const usageWeight = getUsageWeightForCandidate(constraints.format, species, deps.dex);
+      const offense = Math.max(species.baseStats.atk, species.baseStats.spa);
+      const bulk = species.baseStats.hp + Math.max(species.baseStats.def, species.baseStats.spd);
+      const topAbilityRating = Math.max(0, ...species.abilities.map((ability) => deps.dex.getAbility(ability)?.rating ?? 0));
+
+      if (isBssLikeFormat(constraints.format) && usageWeight < 0.05 && species.bst < 500 && offense < 100 && species.baseStats.spe < 105 && bulk < 185 && topAbilityRating < 4) {
+        return false;
+      }
+
+      return true;
+    })
     .map((species) => {
       let score = Math.round(getUsageWeightForCandidate(constraints.format, species, deps.dex) * 12);
       const reasons: string[] = [];

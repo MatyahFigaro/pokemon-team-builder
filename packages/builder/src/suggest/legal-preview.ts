@@ -173,8 +173,18 @@ function getPreferredCategory(speciesName: string, dex: SpeciesDexPort, format?:
   const species = dex.getSpecies(speciesName);
   if (!species) return 'Physical';
 
-  const usageWeights = new Map((getSpeciesUsage(format ?? '', speciesName)?.moves ?? []).map((entry) => [toId(entry.name), entry.usage]));
+  const statDiff = species.baseStats.spa - species.baseStats.atk;
   const learnableMoves = dex.getLearnableMoves(speciesName);
+  const learnableMoveIds = new Set(learnableMoves.map((move) => move.id));
+  const abilityIds = new Set(species.abilities.map(toId));
+
+  if (statDiff >= 15) return 'Special';
+  if (statDiff <= -15) return 'Physical';
+  if (abilityIds.has('contrary') && (learnableMoveIds.has('leafstorm') || learnableMoveIds.has('overheat') || learnableMoveIds.has('dracometeor'))) {
+    return 'Special';
+  }
+
+  const usageWeights = new Map((getSpeciesUsage(format ?? '', speciesName)?.moves ?? []).map((entry) => [toId(entry.name), entry.usage]));
   const scoreCategory = (category: 'Physical' | 'Special'): number => {
     const offensiveStat = category === 'Special' ? species.baseStats.spa : species.baseStats.atk;
     const bestMoves = learnableMoves
@@ -288,17 +298,23 @@ function buildItemOptions(speciesName: string, format: FormatId, dex: SpeciesDex
   const bulky = shouldUseBulkySpread(speciesName, dex, moves, options);
   const fast = species.baseStats.spe >= 100;
   const offensive = Math.max(species.baseStats.atk, species.baseStats.spa) >= 110;
+  const abilityIds = new Set(species.abilities.map(toId));
   const hasSetup = moveInfos.some((move) => isSetupMoveForCategory(move, preferredCategory));
   const hasRecovery = moveInfos.some((move) => RECOVERY_MOVE_IDS.has(move.id));
+  const hasDisruption = moveInfos.some((move) => DISRUPTION_MOVE_IDS.has(move.id));
+  const choiceFriendly = !hasSetup && !hasRecovery && statusCount === 0;
+  const abilityDrivenBreaker = abilityIds.has('contrary') || abilityIds.has('technician') || abilityIds.has('hugepower') || abilityIds.has('purepower');
 
   const usageItems = getTopUsageNames(getSpeciesUsage(format, speciesName)?.items, 6);
   const items: string[] = [...usageItems];
   if (species.requiredItem) items.push(species.requiredItem);
-  if (bulky || hasRecovery || options.roleHint === 'hazard-control') items.push('Leftovers', 'Sitrus Berry', 'Rocky Helmet');
-  if (fast || options.roleHint === 'speed') items.push('Focus Sash', 'Choice Scarf');
+  if (bulky || hasRecovery || hasDisruption || options.roleHint === 'hazard-control') items.push('Leftovers', 'Sitrus Berry', 'Rocky Helmet');
+  if (fast || options.roleHint === 'speed') items.push('Focus Sash');
+  if ((offensive || abilityDrivenBreaker) && !bulky) items.push('Life Orb', 'Lum Berry');
+  if ((fast || options.roleHint === 'speed') && choiceFriendly && (offensive || species.baseStats.spe >= 115)) items.push('Choice Scarf');
   if (hasSetup) items.push('Lum Berry', 'Life Orb');
-  if (offensive && statusCount === 0 && damagingCount >= 3 && preferredCategory === 'Physical') items.push('Choice Band');
-  if (offensive && statusCount === 0 && damagingCount >= 3 && preferredCategory === 'Special') items.push('Choice Specs');
+  if ((offensive || abilityDrivenBreaker) && choiceFriendly && damagingCount >= 3 && preferredCategory === 'Physical') items.push('Choice Band');
+  if ((offensive || abilityDrivenBreaker) && choiceFriendly && damagingCount >= 3 && preferredCategory === 'Special') items.push('Choice Specs');
   if (bulky && statusCount === 0) items.push('Assault Vest');
 
   return Array.from(new Set([...items, ...GENERIC_ITEM_POOL]));
@@ -342,6 +358,111 @@ function buildEvs(speciesName: string, dex: SpeciesDexPort, moves: string[], opt
 
 function buildIvs(speciesName: string, dex: SpeciesDexPort, format?: FormatId): Partial<StatsTable> | undefined {
   return getPreferredCategory(speciesName, dex, format) === 'Special' ? { atk: 0 } : undefined;
+}
+
+function getValidatedUsageSet(
+  speciesName: string,
+  format: FormatId,
+  dex: SpeciesDexPort,
+  validator: ValidationPort,
+  options: PreviewOptions = {},
+): PokemonSet | null {
+  const species = dex.getSpecies(speciesName);
+  const usage = getSpeciesUsage(format, speciesName);
+  if (!species || !usage) return null;
+
+  const preferredCategory = getPreferredCategory(species.name, dex, format);
+  const usageWeights = new Map((usage.moves ?? []).map((entry) => [toId(entry.name), entry.usage]));
+  const learnableMoveIds = new Set(dex.getLearnableMoves(species.name).map((move) => move.id));
+  const usageMoves = getTopUsageNames(usage.moves, 14)
+    .map((moveName) => dex.getMove(moveName))
+    .filter((move): move is MoveInfo => Boolean(move))
+    .filter((move) => !isLowQualityFallbackMove(move))
+    .filter((move) => move.category === 'Status' || learnableMoveIds.has(move.id));
+
+  const sortByUsageAndPower = (moves: MoveInfo[]) => dedupeMoveNames(moves)
+    .sort((left, right) => {
+      const leftScore = scoreOffensiveMove(left, species.name, dex, preferredCategory) + ((usageWeights.get(left.id) ?? 0) * 4);
+      const rightScore = scoreOffensiveMove(right, species.name, dex, preferredCategory) + ((usageWeights.get(right.id) ?? 0) * 4);
+      return rightScore - leftScore;
+    });
+
+  const chosen: MoveInfo[] = [];
+  const pushUnique = (move?: MoveInfo) => {
+    if (!move) return;
+    if (chosen.some((entry) => entry.id === move.id)) return;
+    chosen.push(move);
+  };
+
+  const damagingMoves = sortByUsageAndPower(usageMoves.filter((move) => move.category !== 'Status' && (move.basePower ?? 0) >= 55));
+  const stabMoves = damagingMoves.filter((move) => species.types.includes(move.type));
+  const coverageMoves = damagingMoves.filter((move) => !species.types.includes(move.type));
+  const recoveryMoves = sortByUsageAndPower(usageMoves.filter((move) => RECOVERY_MOVE_IDS.has(move.id)));
+  const disruptionMoves = sortByUsageAndPower(usageMoves.filter((move) => DISRUPTION_MOVE_IDS.has(move.id)));
+  const pivotMoves = sortByUsageAndPower(usageMoves.filter((move) => PIVOT_MOVE_IDS.has(move.id)));
+  const priorityMoves = sortByUsageAndPower(usageMoves.filter((move) => PRIORITY_MOVE_IDS.has(move.id)));
+  const setupMoves = sortByUsageAndPower(usageMoves.filter((move) => isSetupMoveForCategory(move, preferredCategory)));
+
+  pushUnique(stabMoves[0] ?? damagingMoves[0]);
+  pushUnique(stabMoves[1] ?? coverageMoves[0] ?? damagingMoves[1]);
+
+  if (options.roleHint === 'pivot') pushUnique(pivotMoves[0]);
+  if (options.roleHint === 'speed') pushUnique(priorityMoves[0] ?? setupMoves[0]);
+  if (options.roleHint === 'bulky' || options.roleHint === 'hazard-control') {
+    pushUnique(recoveryMoves[0]);
+    pushUnique(disruptionMoves[0]);
+  } else {
+    pushUnique(setupMoves[0]);
+    pushUnique(priorityMoves[0]);
+    pushUnique(pivotMoves[0]);
+  }
+
+  const fallbackMoves = buildMoves(species.name, format, dex, options)
+    .map((moveName) => dex.getMove(moveName))
+    .filter((move): move is MoveInfo => Boolean(move));
+
+  for (const move of [...coverageMoves, ...damagingMoves, ...recoveryMoves, ...disruptionMoves, ...priorityMoves, ...setupMoves, ...pivotMoves, ...fallbackMoves]) {
+    if (chosen.length >= 4) break;
+    pushUnique(move);
+  }
+
+  const moves = chosen.slice(0, 4).map((move) => move.name);
+  if (moves.length === 0 || !passesPreviewQualityGate(species.name, moves, dex, format)) return null;
+
+  const abilityOptions = Array.from(new Set([
+    ...getTopUsageNames(usage.abilities, 3),
+    chooseAbility(species.name, dex, format),
+  ].filter(Boolean)));
+  const itemOptions = Array.from(new Set([
+    ...getTopUsageNames(usage.items, 6),
+    ...buildItemOptions(species.name, format, dex, moves, options),
+  ].filter(Boolean)));
+  const teraType = getTopUsageNames(usage.teraTypes, 1)[0] ?? chooseTeraType(species.name, format, dex);
+  const nature = buildNature(species.name, dex, moves, options, format);
+  const evs = convertStatPoints(buildEvs(species.name, dex, moves, options, format), format);
+  const ivs = normalizeIvs(buildIvs(species.name, dex, format));
+
+  for (const ability of abilityOptions) {
+    for (const item of itemOptions) {
+      const set: PokemonSet = {
+        species: species.name,
+        item,
+        ability,
+        nature,
+        moves,
+        level: 50,
+        teraType,
+        evs,
+        ivs,
+      };
+
+      const result = validator.validateSet(set, format);
+      if (isPromiseLike<ValidationSetResult>(result)) continue;
+      if (result.valid) return result.normalizedSet ?? set;
+    }
+  }
+
+  return null;
 }
 
 function isPromiseLike<T>(value: T | Promise<T>): value is Promise<T> {
@@ -564,6 +685,9 @@ export function getCompetitiveSet(
 
   const manualSet = getValidatedManualSet(species.name, format, dex, validator, options);
   if (manualSet) return manualSet;
+
+  const usageSet = getValidatedUsageSet(species.name, format, dex, validator, options);
+  if (usageSet) return usageSet;
 
   const moves = buildMoves(species.name, format, dex, options);
   if (moves.length === 0 || !passesPreviewQualityGate(species.name, moves, dex, format)) return null;
