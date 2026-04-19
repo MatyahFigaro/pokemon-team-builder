@@ -7,6 +7,7 @@ import { registerListFormatsCommand } from './commands/list-formats.js';
 import { registerListPokemonCommand } from './commands/list-pokemon.js';
 import { registerNormalizeCommand } from './commands/normalize.js';
 import { registerSimMatchupCommand } from './commands/sim-matchup.js';
+import { registerSuggestCommand } from './commands/suggest.js';
 import { registerSuggestCompleteCommand } from './commands/suggest-complete.js';
 import { registerSuggestPatchCommand } from './commands/suggest-patch.js';
 
@@ -20,6 +21,7 @@ program
 registerAnalyzeCommand(program);
 registerListFormatsCommand(program);
 registerListPokemonCommand(program);
+registerSuggestCommand(program);
 registerSuggestPatchCommand(program);
 registerSuggestCompleteCommand(program);
 registerSimMatchupCommand(program);

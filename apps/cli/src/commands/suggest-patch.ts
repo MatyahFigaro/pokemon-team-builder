@@ -1,6 +1,6 @@
 import type { Command } from 'commander';
 
-import { createService, formatSuggestions, readTeamText } from '../shared.js';
+import { createService, formatSuggestions, readTeamText, selectSuggestionsByMode } from '../shared.js';
 
 export function registerSuggestPatchCommand(program: Command): void {
   program
@@ -12,7 +12,7 @@ export function registerSuggestPatchCommand(program: Command): void {
       const service = createService();
       const teamText = await readTeamText(options.file);
       const team = service.importShowdown(teamText, options.format);
-      const suggestions = await service.suggestPatch(team);
+      const suggestions = selectSuggestionsByMode(await service.suggestPatch(team), 'patch');
 
       console.log(formatSuggestions(suggestions));
     });

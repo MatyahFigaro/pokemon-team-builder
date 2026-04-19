@@ -24,6 +24,28 @@ export async function readTeamText(file?: string): Promise<string> {
   throw new Error('Provide a team with --file or pipe Showdown text through stdin.');
 }
 
+export function selectSuggestionsByMode(
+  suggestions: Suggestion[],
+  mode: 'auto' | 'patch' | 'complete',
+): Suggestion[] {
+  if (mode === 'patch') {
+    const patchOnly = suggestions.filter((suggestion) => suggestion.kind !== 'complete');
+    return (patchOnly.length ? patchOnly : suggestions).slice(0, 3);
+  }
+
+  if (mode === 'complete') {
+    const completeOnly = suggestions.filter((suggestion) => suggestion.kind === 'complete');
+    return (completeOnly.length ? completeOnly : suggestions).slice(0, 3);
+  }
+
+  const completeFirst = [
+    ...suggestions.filter((suggestion) => suggestion.kind === 'complete'),
+    ...suggestions.filter((suggestion) => suggestion.kind !== 'complete'),
+  ];
+
+  return (completeFirst.length ? completeFirst : suggestions).slice(0, 3);
+}
+
 export function formatSuggestions(suggestions: Suggestion[]): string {
   if (suggestions.length === 0) {
     return 'No suggestions generated.';
