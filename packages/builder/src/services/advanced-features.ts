@@ -266,9 +266,9 @@ async function rescoreTopCandidatesWithSimulation(
   const probeOpponent = buildThreatSimulationTeam(constraints.format, deps.dex, deps.validator);
   if (!probeOpponent) return candidates;
 
-  const simulationWindow = Math.min(8, candidates.length);
+  const simulationWindow = candidates.length;
   const rescored = await Promise.all(candidates.slice(0, simulationWindow).map(async (candidate) => {
-    const candidateSet = getCompetitiveSet(candidate.species, constraints.format, deps.dex, deps.validator, {
+    const candidateSet = candidate.set ?? getCompetitiveSet(candidate.species, constraints.format, deps.dex, deps.validator, {
       roleHint: getBuildRoleHint(candidate.species, deps.dex, constraints.style),
       style: constraints.style,
     }) ?? buildAnchorSeedSet(candidate.species, constraints.format, deps.dex, deps.validator, getBuildRoleHint(candidate.species, deps.dex, constraints.style));
@@ -278,16 +278,16 @@ async function rescoreTopCandidatesWithSimulation(
     const simTeam: Team = {
       format: constraints.format,
       source: 'generated',
-      members: [...seedTeam.members.slice(0, 2), candidateSet]
+      members: [...seedTeam.members, candidateSet]
         .filter((member, index, array) => array.findIndex((entry) => toId(entry.species) === toId(member.species)) === index)
-        .slice(0, 3),
+        .slice(0, 6),
     };
 
     const summary = await deps.simulator?.simulateMatchup({
       format: constraints.format,
       team: simTeam,
       opponent: probeOpponent,
-      iterations: 3,
+      iterations: 1,
     });
 
     if (!summary) return candidate;
@@ -1088,6 +1088,7 @@ function matchesStyle(speciesName: string, style: BuildConstraints['style'], dex
 interface RankedBuildCandidate extends BuildRecommendation {
   types: string[];
   tags: string[];
+  set?: PokemonSet;
 }
 
 function getMissingAnchorTypes(seedTeam: Team, dex: SpeciesDexPort): string[] {
@@ -1153,7 +1154,104 @@ function selectDiverseRecommendations(
     for (const tag of next.tags) tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1);
   }
 
-  return selected.map(({ types, tags, ...entry }) => entry);
+  return selected.map(({ types, tags, set, ...entry }) => entry);
+}
+
+function canSelectCandidate(
+  candidate: RankedBuildCandidate,
+  tagCounts: Map<string, number>,
+  maxMegaCount: number,
+  maxHazardCount: number,
+): boolean {
+  if (candidate.tags.some((tag) => tag.startsWith('item:') && (tagCounts.get(tag) ?? 0) >= 1)) return false;
+  if (candidate.tags.includes('mega') && (tagCounts.get('mega') ?? 0) >= maxMegaCount) return false;
+  if (candidate.tags.includes('hazard') && (tagCounts.get('hazard') ?? 0) >= maxHazardCount) return false;
+  return true;
+}
+
+async function selectRecommendationsWithIteration(
+  candidates: RankedBuildCandidate[],
+  limit: number,
+  seedTeam: Team,
+  constraints: BuildConstraints,
+  deps: AnalyzeTeamDeps,
+  maxMegaCount: number,
+  maxHazardCount: number,
+  initialTagCounts?: Map<string, number>,
+): Promise<{ recommendations: BuildRecommendation[]; projectedWinRate?: number }> {
+  if (!deps.simulator) {
+    return {
+      recommendations: selectDiverseRecommendations(candidates, limit, maxMegaCount, maxHazardCount, initialTagCounts),
+    };
+  }
+
+  const probeOpponent = buildThreatSimulationTeam(constraints.format, deps.dex, deps.validator);
+  if (!probeOpponent) {
+    return {
+      recommendations: selectDiverseRecommendations(candidates, limit, maxMegaCount, maxHazardCount, initialTagCounts),
+    };
+  }
+
+  const remaining = [...candidates];
+  const selected: RankedBuildCandidate[] = [];
+  const tagCounts = new Map<string, number>(initialTagCounts ? [...initialTagCounts.entries()] : []);
+  const typeCounts = new Map<string, number>();
+  const targetWinRate = isBssLikeFormat(constraints.format) ? 0.58 : 0.55;
+  let projectedWinRate = 0.5;
+
+  while (selected.length < limit && remaining.length > 0) {
+    const evaluations = await Promise.all(remaining.map(async (candidate) => {
+      if (!candidate.set || !canSelectCandidate(candidate, tagCounts, maxMegaCount, maxHazardCount)) {
+        return { candidate, adjustedScore: Number.NEGATIVE_INFINITY, winRate: 0 };
+      }
+
+      const trialTeam: Team = {
+        format: constraints.format,
+        source: 'generated',
+        members: [...seedTeam.members, ...selected.map((entry) => entry.set).filter((entry): entry is PokemonSet => Boolean(entry)), candidate.set]
+          .filter((member, index, array) => array.findIndex((entry) => toId(entry.species) === toId(member.species)) === index)
+          .slice(0, 6),
+      };
+
+      const summary = await deps.simulator?.simulateMatchup({
+        format: constraints.format,
+        team: trialTeam,
+        opponent: probeOpponent,
+        iterations: projectedWinRate >= targetWinRate ? 1 : 2,
+      });
+
+      const winRate = summary?.winRate ?? 0.5;
+      const newTypeBonus = candidate.types.some((type) => (typeCounts.get(type) ?? 0) === 0) ? 4 : 0;
+      const adjustedScore = candidate.score + Math.round((winRate - 0.5) * 40) + newTypeBonus;
+      return { candidate, adjustedScore, winRate };
+    }));
+
+    evaluations.sort((left, right) => right.adjustedScore - left.adjustedScore || right.candidate.score - left.candidate.score || left.candidate.species.localeCompare(right.candidate.species));
+    const best = evaluations.find((entry) => Number.isFinite(entry.adjustedScore));
+    if (!best) break;
+
+    projectedWinRate = best.winRate;
+    const enriched: RankedBuildCandidate = {
+      ...best.candidate,
+      score: best.candidate.score + Math.round((best.winRate - 0.5) * 28),
+      reasons: uniqueStrings([
+        best.winRate >= targetWinRate
+          ? `pushes the projected shell over the sim target (${Math.round(best.winRate * 100)}%)`
+          : `improves the projected shell in simulation (${Math.round(best.winRate * 100)}%)`,
+        ...best.candidate.reasons,
+      ]).slice(0, 3),
+    };
+
+    selected.push(enriched);
+    remaining.splice(remaining.findIndex((entry) => entry.species === enriched.species), 1);
+    for (const type of enriched.types) typeCounts.set(type, (typeCounts.get(type) ?? 0) + 1);
+    for (const tag of enriched.tags) tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1);
+  }
+
+  return {
+    recommendations: selected.map(({ types, tags, set, ...entry }) => entry),
+    projectedWinRate,
+  };
 }
 
 export async function buildWithConstraints(constraints: BuildConstraints, deps: AnalyzeTeamDeps): Promise<ConstrainedBuildReport> {
@@ -1278,10 +1376,14 @@ export async function buildWithConstraints(constraints: BuildConstraints, deps: 
         reasons.push('fits a slower coverage-first plan');
       }
 
-      const preview = getCompetitiveSetPreview(species.name, constraints.format, deps.dex, deps.validator, {
+      const candidateSet = getCompetitiveSet(species.name, constraints.format, deps.dex, deps.validator, {
         roleHint: getBuildRoleHint(species.name, deps.dex, constraints.style),
         style: constraints.style,
-      });
+      }) ?? buildAnchorSeedSet(species.name, constraints.format, deps.dex, deps.validator, getBuildRoleHint(species.name, deps.dex, constraints.style));
+      const preview = candidateSet ? getCompetitiveSetPreview(species.name, constraints.format, deps.dex, deps.validator, {
+        roleHint: getBuildRoleHint(species.name, deps.dex, constraints.style),
+        style: constraints.style,
+      }) : null;
       if (preview) score += 3;
       else score -= 10;
 
@@ -1316,19 +1418,25 @@ export async function buildWithConstraints(constraints: BuildConstraints, deps: 
         preview,
         types: species.types,
         tags,
+        set: candidateSet ?? undefined,
       } satisfies RankedBuildCandidate;
     })
     .sort((left, right) => right.score - left.score || left.species.localeCompare(right.species));
 
   rankedCandidates = await rescoreTopCandidatesWithSimulation(rankedCandidates, seedTeam, constraints, deps);
 
-  const recommendations = selectDiverseRecommendations(
+  const desiredCount = Math.max(1, 6 - seedTeam.members.length);
+  const iterativeSelection = await selectRecommendationsWithIteration(
     rankedCandidates,
-    Math.max(1, 6 - seedTeam.members.length),
+    desiredCount,
+    seedTeam,
+    constraints,
+    deps,
     maxRecommendedMegas,
     maxRecommendedHazards,
     initialTagCounts,
   );
+  const recommendations = iterativeSelection.recommendations;
 
   return {
     format: constraints.format,
@@ -1344,7 +1452,12 @@ export async function buildWithConstraints(constraints: BuildConstraints, deps: 
             'The BSS teambuilding guide is now reflected in scoring: bring-3 shells, safe leads or pivots, speed control or priority, and matchup patching matter more than generic hazards or same-type stacking.',
             'The builder also avoids stuffing the roster with too many Mega options; at most two Mega candidates are kept, and they still need real synergy with the rest of the shell.',
             'It also avoids overstacking hazard setters, so field pressure does not crowd out better bring-3 partners.',
-            deps.simulator ? 'Top shortlist options were also rechecked with Showdown-backed matchup sims against the current live threat cluster.' : undefined,
+            deps.simulator ? 'Top shortlist options are now iterated through Showdown-backed matchup sims against the current live threat cluster until the shell clears or approaches the target win-rate band.' : undefined,
+            iterativeSelection.projectedWinRate
+              ? (iterativeSelection.projectedWinRate >= (isBssLikeFormat(constraints.format) ? 0.58 : 0.55)
+                  ? `The current iterative shell reached about ${Math.round(iterativeSelection.projectedWinRate * 100)}% in the live threat-cluster sim.`
+                  : `The current iterative shell plateaued around ${Math.round(iterativeSelection.projectedWinRate * 100)}% in the live threat-cluster sim, so more refinement is still possible.`)
+              : undefined,
             `Current live pressure points include ${(report.threats.topPressureThreats ?? []).slice(0, 3).map((threat) => threat.species).join(', ') || 'the usual top threats'}.`,
           ]
         : []),
