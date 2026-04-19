@@ -51,6 +51,9 @@ importers:
       '@pokemon/domain':
         specifier: workspace:*
         version: link:../domain
+      '@pokemon/storage':
+        specifier: workspace:*
+        version: link:../storage
     devDependencies:
       '@repo/typescript-config':
         specifier: workspace:*

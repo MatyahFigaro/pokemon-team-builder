@@ -24,6 +24,14 @@ export function computeStructuralScore(team: Team, report: Omit<AnalysisReport, 
   if (report.speed.hasSpeedControl) offense += 5;
   if (report.synergy.uniqueTypes.length >= 8) defense += 5;
 
+  if (report.profile.style === 'bss') {
+    notes.push('BSS format profile applied.');
+    defense += Math.round((report.threats.coverageScore - 50) / 10);
+    offense += report.battlePlan.speedControlRating === 'good' ? 4 : report.battlePlan.speedControlRating === 'poor' ? -4 : 1;
+    utility += report.battlePlan.leadCandidates.length >= 2 ? 3 : 0;
+    utility -= report.battlePlan.teraDependency === 'high' ? 3 : 0;
+  }
+
   for (const issue of report.issues) {
     if (issue.severity === 'error') {
       offense -= 6;

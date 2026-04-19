@@ -13,6 +13,7 @@ export interface SpeciesInfo {
 
 export interface SpeciesDexPort {
   getSpecies(name: string): SpeciesInfo | null;
+  listAvailableSpecies(format: FormatId): SpeciesInfo[];
   listTypes(): string[];
   getTypeEffectiveness(attackingType: string, defendingTypes: readonly string[]): number;
 }

@@ -9,6 +9,15 @@ const weaknessExamples: Record<string, string[]> = {
   Ice: ['Kingambit', 'Heatran', 'Scizor'],
 };
 
+const threatCounterExamples: Record<string, string[]> = {
+  'Dragonite': ['Dondozo', 'Primarina', 'Weavile'],
+  'Kingambit': ['Great Tusk', 'Iron Hands', 'Hisuian Arcanine'],
+  'Flutter Mane': ['Kingambit', 'Gholdengo', 'Heatran'],
+  'Miraidon': ['Clodsire', 'Ting-Lu', 'Gastrodon'],
+  'Koraidon': ['Dondozo', 'Landorus-Therian', 'Primarina'],
+  'Zacian-Crowned': ['Skeledirge', 'Dondozo', 'Heatran'],
+};
+
 function getTargetSlot(team: Team, issue?: TeamIssue): number | undefined {
   const memberName = issue?.memberNames?.[0];
   if (!memberName) return undefined;
@@ -43,6 +52,21 @@ export function buildPatchSuggestions(team: Team, report: AnalysisReport): Sugge
         'Prefer a remover that also patches one of your repeated weaknesses.',
       ],
       exampleOptions: ['Great Tusk', 'Corviknight', 'Iron Treads'],
+    });
+  }
+
+  const topThreat = report.threats.topPressureThreats[0];
+  if (topThreat && topThreat.pressure === 'high') {
+    suggestions.push({
+      kind: 'replace',
+      title: `Add a clearer answer to ${topThreat.species}`,
+      rationale: 'Species-level BSS threat scoring suggests this matchup remains shaky even when exact opposing sets are unknown.',
+      priority: 'high',
+      changes: [
+        'Replace one passive slot with a sturdier check or revenge killer for this threat.',
+        'Prefer a candidate that also improves your bring-3 flexibility and speed benchmarks.',
+      ],
+      exampleOptions: threatCounterExamples[topThreat.species] ?? ['Great Tusk', 'Heatran', 'Kingambit'],
     });
   }
 

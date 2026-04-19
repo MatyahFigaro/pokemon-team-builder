@@ -331,6 +331,43 @@ export class ShowdownDexAdapter implements SpeciesDexPort {
     };
   }
 
+  listAvailableSpecies(format: string): SpeciesInfo[] {
+    const resolved = resolveFormatForValidation(format);
+    const formatInfo = Dex.formats.get(resolved.resolvedFormat);
+    const moddedDex = Dex.forFormat(formatInfo);
+
+    const availableSpecies: SpeciesInfo[] = [];
+
+    for (const entry of listPokemonForFormat({
+      format: resolved.resolvedFormat,
+      limit: 5000,
+    }).pokemon) {
+      const species = moddedDex.species.get(entry.name);
+      if (!species.exists) continue;
+
+      const baseStats = {
+        hp: species.baseStats.hp,
+        atk: species.baseStats.atk,
+        def: species.baseStats.def,
+        spa: species.baseStats.spa,
+        spd: species.baseStats.spd,
+        spe: species.baseStats.spe,
+      };
+
+      availableSpecies.push({
+        id: species.id,
+        name: species.name,
+        types: [...species.types],
+        baseStats,
+        abilities: (Object.values(species.abilities ?? {}) as string[]).filter(Boolean),
+        tier: species.tier,
+        bst: Object.values(baseStats).reduce((sum, value) => sum + value, 0),
+      });
+    }
+
+    return availableSpecies;
+  }
+
   listTypes(): string[] {
     return [...ALL_TYPES];
   }

@@ -1,5 +1,6 @@
 import type { AnalysisReport, SpeciesDexPort, Team, ValidationPort } from '@pokemon/domain';
 
+import { analyzeBssPlan } from '../analysis/bss.js';
 import { summarizeRoles } from '../analysis/roles.js';
 import { analyzeSpeed } from '../analysis/speed.js';
 import { analyzeSynergy } from '../analysis/synergy.js';
@@ -21,11 +22,13 @@ export async function analyzeTeam(team: Team, deps: AnalyzeTeamDeps): Promise<An
   const weaknessAnalysis = analyzeWeaknesses(workingTeam, deps.dex);
   const speedAnalysis = analyzeSpeed(workingTeam, deps.dex, roles);
   const synergyAnalysis = analyzeSynergy(workingTeam, deps.dex, roles);
+  const bssAnalysis = analyzeBssPlan(workingTeam, deps.dex, roles, speedAnalysis.speed);
 
   const issues = [
     ...weaknessAnalysis.issues,
     ...speedAnalysis.issues,
     ...synergyAnalysis.issues,
+    ...bssAnalysis.issues,
   ].sort((left, right) => {
     const rank = { error: 0, warning: 1, info: 2 } as const;
     return rank[left.severity] - rank[right.severity];
@@ -38,10 +41,13 @@ export async function analyzeTeam(team: Team, deps: AnalyzeTeamDeps): Promise<An
       errors: validation.errors,
       warnings: validation.warnings,
     },
+    profile: bssAnalysis.profile,
     roles,
     weaknesses: weaknessAnalysis.weaknesses,
     speed: speedAnalysis.speed,
     synergy: synergyAnalysis.synergy,
+    battlePlan: bssAnalysis.battlePlan,
+    threats: bssAnalysis.threats,
     issues,
   };
 

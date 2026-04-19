@@ -1,3 +1,5 @@
+export * from './bss-meta.js';
+
 export interface StoredTeamRecord {
   id: string;
   format: string;

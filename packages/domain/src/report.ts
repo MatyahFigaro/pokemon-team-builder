@@ -50,6 +50,36 @@ export interface SynergySummary {
   missingRoles: string[];
 }
 
+export interface FormatProfileSummary {
+  style: 'standard' | 'bss';
+  bringCount: number;
+  pickCount: number;
+  levelCap: number;
+  speedBenchmarks: Array<{ label: string; value: number }>;
+}
+
+export interface BattlePlanSummary {
+  leadCandidates: string[];
+  likelyPicks: string[];
+  speedControlRating: 'poor' | 'fair' | 'good';
+  teraDependency: 'low' | 'medium' | 'high';
+  notes: string[];
+}
+
+export interface ThreatPressureSummary {
+  species: string;
+  pressure: 'low' | 'moderate' | 'high';
+  reasons: string[];
+}
+
+export interface ThreatCoverageSummary {
+  poolSize: number;
+  consideredThreatCount: number;
+  coverageScore: number;
+  topPressureThreats: ThreatPressureSummary[];
+  notes: string[];
+}
+
 export interface ScoreBreakdown {
   total: number;
   offense: number;
@@ -71,10 +101,13 @@ export interface Suggestion {
 export interface AnalysisReport {
   format: FormatId;
   legality: LegalitySummary;
+  profile: FormatProfileSummary;
   roles: RoleSummary[];
   weaknesses: WeaknessSummary[];
   speed: SpeedSummary;
   synergy: SynergySummary;
+  battlePlan: BattlePlanSummary;
+  threats: ThreatCoverageSummary;
   issues: TeamIssue[];
   score: ScoreBreakdown;
   suggestions: Suggestion[];

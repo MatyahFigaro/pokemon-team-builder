@@ -1,3 +1,4 @@
+export * from './analysis/bss.js';
 export * from './analysis/roles.js';
 export * from './analysis/speed.js';
 export * from './analysis/synergy.js';
