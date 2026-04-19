@@ -180,6 +180,18 @@ function isMegaSpecies(species: NonNullable<ReturnType<SpeciesDexPort['getSpecie
   return Boolean(item?.megaStone || item?.megaEvolves || species.name.includes('-Mega'));
 }
 
+function isMegaSet(set: Pick<PokemonSet, 'species' | 'item'>, dex: SpeciesDexPort): boolean {
+  if (set.species.includes('-Mega')) return true;
+
+  if (set.item) {
+    const item = dex.getItem(set.item);
+    if (item?.megaStone || item?.megaEvolves) return true;
+  }
+
+  const species = dex.getSpecies(set.species);
+  return species ? isMegaSpecies(species, dex) : false;
+}
+
 function getUsageWeightForCandidate(format: string, species: NonNullable<ReturnType<SpeciesDexPort['getSpecies']>>, dex: SpeciesDexPort): number {
   const direct = getUsageWeight(format, species.name);
   if (direct > 0) return direct;
@@ -1125,10 +1137,7 @@ export async function buildWithConstraints(constraints: BuildConstraints, deps: 
   const available = deps.dex.listAvailableSpecies(constraints.format);
 
   const missingAnchorTypes = new Set(getMissingAnchorTypes(seedTeam, deps.dex));
-  const megaAnchors = seedTeam.members.filter((member) => {
-    const species = deps.dex.getSpecies(member.species);
-    return species ? isMegaSpecies(species, deps.dex) : false;
-  }).length;
+  const megaAnchors = seedTeam.members.filter((member) => isMegaSet(member, deps.dex)).length;
   const hazardAnchors = seedTeam.members.filter((member) => hasConfiguredHazardMove(member)).length;
   const maxRecommendedMegas = Math.max(0, 2 - megaAnchors);
   const maxRecommendedHazards = Math.max(0, 1 - hazardAnchors);
