@@ -1,15 +1,7 @@
-import type { AnalysisReport, SpeciesDexPort, Suggestion, Team } from '@pokemon/domain';
+import type { AnalysisReport, SpeciesDexPort, Suggestion, Team, ValidationPort } from '@pokemon/domain';
 import { defaultBssMeta } from '@pokemon/storage';
 
-const competitiveSetTemplates: Record<string, string> = {
-  corviknight: 'Corviknight @ Leftovers | Ability: Mirror Armor | EVs: 252 HP / 168 Def / 88 SpD | Impish | Moves: Brave Bird / U-turn / Roost / Defog',
-  greattusk: 'Great Tusk @ Booster Energy | Ability: Protosynthesis | EVs: 252 Atk / 4 Def / 252 Spe | Jolly | Moves: Headlong Rush / Close Combat / Ice Spinner / Rapid Spin',
-  dragapult: 'Dragapult @ Choice Specs | Ability: Infiltrator | EVs: 4 Def / 252 SpA / 252 Spe | Timid | Moves: Draco Meteor / Shadow Ball / Flamethrower / U-turn',
-  rotomwash: 'Rotom-Wash @ Leftovers | Ability: Levitate | EVs: 252 HP / 196 Def / 60 Spe | Bold | Moves: Volt Switch / Hydro Pump / Will-O-Wisp / Protect',
-  incineroar: 'Incineroar @ Sitrus Berry | Ability: Intimidate | EVs: 252 HP / 92 Def / 164 SpD | Careful | Moves: Flare Blitz / Knock Off / U-turn / Will-O-Wisp',
-  landorustherian: 'Landorus-Therian @ Rocky Helmet | Ability: Intimidate | EVs: 252 HP / 196 Def / 60 Spe | Impish | Moves: Earthquake / U-turn / Stealth Rock / Taunt',
-  kingambit: 'Kingambit @ Black Glasses | Ability: Supreme Overlord | EVs: 252 HP / 252 Atk / 4 SpD | Adamant | Moves: Kowtow Cleave / Sucker Punch / Iron Head / Swords Dance',
-};
+import { getCompetitiveSetPreview, prioritizePreviewableCandidates } from './legal-preview.js';
 
 function normalize(value: string | undefined): string {
   return (value ?? '').trim().toLowerCase();
@@ -33,9 +25,9 @@ function abilityCouldGrantImmunity(abilities: string[], attackingType: string, d
   });
 }
 
-function buildCompetitiveSetLines(exampleOptions: string[]): string[] {
-  return exampleOptions
-    .map((name) => competitiveSetTemplates[normalize(name).replace(/[^a-z0-9]/g, '')])
+function buildCompetitiveSetLines(exampleOptions: string[], team: Team, validator: ValidationPort): string[] {
+  return prioritizePreviewableCandidates(exampleOptions, team.format, validator)
+    .map((name) => getCompetitiveSetPreview(name, team.format, validator))
     .filter((value): value is string => Boolean(value))
     .slice(0, 2)
     .map((preview) => `Sample competitive set: ${preview}`);
@@ -70,7 +62,7 @@ function rankCompletionCandidates(team: Team, report: AnalysisReport, dex: Speci
     .map((entry) => entry.name);
 }
 
-export function buildCompletionSuggestions(team: Team, report: AnalysisReport, dex: SpeciesDexPort): Suggestion[] {
+export function buildCompletionSuggestions(team: Team, report: AnalysisReport, dex: SpeciesDexPort, validator: ValidationPort): Suggestion[] {
   const missingSlots = Math.max(0, 6 - team.members.length);
   if (missingSlots === 0) return [];
 
@@ -79,7 +71,7 @@ export function buildCompletionSuggestions(team: Team, report: AnalysisReport, d
   const uniqueNeeds = Array.from(new Set([nextNeed, speedNeed].filter(Boolean) as string[])).slice(0, 2);
 
   return uniqueNeeds.map((need, index) => {
-    const exampleOptions = rankCompletionCandidates(team, report, dex, need);
+    const exampleOptions = prioritizePreviewableCandidates(rankCompletionCandidates(team, report, dex, need), team.format, validator);
 
     return {
       kind: 'complete',
@@ -89,7 +81,7 @@ export function buildCompletionSuggestions(team: Team, report: AnalysisReport, d
       changes: [
         `Add a member that provides ${need}.`,
         'Choose something legal in the current format that also softens your biggest repeated weakness.',
-        ...buildCompetitiveSetLines(exampleOptions),
+        ...buildCompetitiveSetLines(exampleOptions, team, validator),
       ],
       exampleOptions,
     } satisfies Suggestion;

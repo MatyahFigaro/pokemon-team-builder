@@ -53,8 +53,8 @@ export async function analyzeTeam(team: Team, deps: AnalyzeTeamDeps): Promise<An
   };
 
   const score = computeStructuralScore(workingTeam, baseReport);
-  const completionSuggestions = buildCompletionSuggestions(workingTeam, { ...baseReport, score, suggestions: [] }, deps.dex);
-  const patchSuggestions = buildPatchSuggestions(workingTeam, { ...baseReport, score, suggestions: [] }, deps.dex);
+  const completionSuggestions = buildCompletionSuggestions(workingTeam, { ...baseReport, score, suggestions: [] }, deps.dex, deps.validator);
+  const patchSuggestions = buildPatchSuggestions(workingTeam, { ...baseReport, score, suggestions: [] }, deps.dex, deps.validator);
   const suggestions = (
     workingTeam.members.length < 6
       ? [...completionSuggestions, ...patchSuggestions]

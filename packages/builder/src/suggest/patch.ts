@@ -1,23 +1,10 @@
-import type { AnalysisReport, SpeciesDexPort, Suggestion, Team, TeamIssue } from '@pokemon/domain';
+import type { AnalysisReport, SpeciesDexPort, Suggestion, Team, TeamIssue, ValidationPort } from '@pokemon/domain';
 import { defaultBssMeta } from '@pokemon/storage';
+
+import { getCompetitiveSetPreview, prioritizePreviewableCandidates } from './legal-preview.js';
 
 const knownRemovalLabels = [...defaultBssMeta.suggestedRemoval, 'Great Tusk', 'Corviknight', 'Iron Treads', 'Mandibuzz'];
 const knownDisruptionLabels = ['Heatran', 'Primarina', 'Grimmsnarl', 'Whimsicott', 'Corviknight', 'Gyarados'];
-
-const competitiveSetTemplates: Record<string, string> = {
-  corviknight: 'Corviknight @ Leftovers | Ability: Mirror Armor | EVs: 252 HP / 168 Def / 88 SpD | Impish | Moves: Brave Bird / U-turn / Roost / Defog',
-  greattusk: 'Great Tusk @ Booster Energy | Ability: Protosynthesis | EVs: 252 Atk / 4 Def / 252 Spe | Jolly | Moves: Headlong Rush / Close Combat / Ice Spinner / Rapid Spin',
-  irontreads: 'Iron Treads @ Assault Vest | Ability: Quark Drive | EVs: 252 Atk / 4 Def / 252 Spe | Jolly | Moves: Earthquake / Iron Head / Rapid Spin / Knock Off',
-  heatran: 'Heatran @ Leftovers | Ability: Flash Fire | EVs: 252 HP / 4 SpA / 252 SpD | Calm | Moves: Magma Storm / Earth Power / Taunt / Protect',
-  primarina: 'Primarina @ Leftovers | Ability: Torrent | EVs: 252 HP / 156 Def / 100 SpA | Bold | Moves: Moonblast / Surf / Haze / Protect',
-  dragonite: 'Dragonite @ Heavy-Duty Boots | Ability: Multiscale | EVs: 252 Atk / 4 SpD / 252 Spe | Adamant | Moves: Dragon Dance / Extreme Speed / Earthquake / Roost',
-  kingambit: 'Kingambit @ Black Glasses | Ability: Supreme Overlord | EVs: 252 HP / 252 Atk / 4 SpD | Adamant | Moves: Kowtow Cleave / Sucker Punch / Iron Head / Swords Dance',
-  rillaboom: 'Rillaboom @ Choice Band | Ability: Grassy Surge | EVs: 252 Atk / 4 SpD / 252 Spe | Adamant | Moves: Grassy Glide / Wood Hammer / U-turn / Knock Off',
-  rotomwash: 'Rotom-Wash @ Leftovers | Ability: Levitate | EVs: 252 HP / 196 Def / 60 Spe | Bold | Moves: Volt Switch / Hydro Pump / Will-O-Wisp / Protect',
-  gholdengo: 'Gholdengo @ Choice Scarf | Ability: Good as Gold | EVs: 4 Def / 252 SpA / 252 Spe | Timid | Moves: Make It Rain / Shadow Ball / Trick / Focus Blast',
-  dragapult: 'Dragapult @ Choice Specs | Ability: Infiltrator | EVs: 4 Def / 252 SpA / 252 Spe | Timid | Moves: Draco Meteor / Shadow Ball / Flamethrower / U-turn',
-  grimmsnarl: 'Grimmsnarl @ Light Clay | Ability: Prankster | EVs: 252 HP / 4 Atk / 252 SpD | Careful | Moves: Reflect / Light Screen / Taunt / Spirit Break',
-};
 
 function normalize(value: string | undefined): string {
   return (value ?? '').trim().toLowerCase();
@@ -154,15 +141,15 @@ function rankFromLegalPool(
     .map((entry) => entry.name);
 }
 
-function buildCompetitiveSetLines(exampleOptions: string[]): string[] {
-  return exampleOptions
-    .map((name) => competitiveSetTemplates[normalize(name).replace(/[^a-z0-9]/g, '')])
+function buildCompetitiveSetLines(exampleOptions: string[], team: Team, validator: ValidationPort): string[] {
+  return prioritizePreviewableCandidates(exampleOptions, team.format, validator)
+    .map((name) => getCompetitiveSetPreview(name, team.format, validator))
     .filter((value): value is string => Boolean(value))
     .slice(0, 2)
     .map((preview) => `Sample competitive set: ${preview}`);
 }
 
-export function buildPatchSuggestions(team: Team, report: AnalysisReport, dex: SpeciesDexPort): Suggestion[] {
+export function buildPatchSuggestions(team: Team, report: AnalysisReport, dex: SpeciesDexPort, validator: ValidationPort): Suggestion[] {
   const suggestions: Suggestion[] = [];
 
   if (!report.legality.valid) {
@@ -180,7 +167,11 @@ export function buildPatchSuggestions(team: Team, report: AnalysisReport, dex: S
   if (hazardIssue) {
     const isBss = report.profile.style === 'bss';
 
-    const exampleOptions = rankFromLegalPool(team, report, dex, { threatenedType: topWeakType, preferBulk: true }, knownRemovalLabels);
+    const exampleOptions = prioritizePreviewableCandidates(
+      rankFromLegalPool(team, report, dex, { threatenedType: topWeakType, preferBulk: true }, knownRemovalLabels),
+      team.format,
+      validator,
+    );
 
     suggestions.push({
       kind: 'patch',
@@ -200,7 +191,7 @@ export function buildPatchSuggestions(team: Team, report: AnalysisReport, dex: S
               'Turn one low-impact slot into a legal Defog or Rapid Spin user.',
               'Prefer a remover that also patches one of your repeated weaknesses.',
             ]),
-        ...buildCompetitiveSetLines(exampleOptions),
+        ...buildCompetitiveSetLines(exampleOptions, team, validator),
       ],
       exampleOptions,
     });
@@ -208,7 +199,11 @@ export function buildPatchSuggestions(team: Team, report: AnalysisReport, dex: S
 
   const topThreat = report.threats.topPressureThreats[0];
   if (topThreat && (topThreat.pressure === 'high' || topThreat.pressure === 'moderate')) {
-    const exampleOptions = rankFromLegalPool(team, report, dex, { threatName: topThreat.species, preferBulk: true, preferSpeed: true });
+    const exampleOptions = prioritizePreviewableCandidates(
+      rankFromLegalPool(team, report, dex, { threatName: topThreat.species, preferBulk: true, preferSpeed: true }),
+      team.format,
+      validator,
+    );
 
     suggestions.push({
       kind: 'replace',
@@ -218,7 +213,7 @@ export function buildPatchSuggestions(team: Team, report: AnalysisReport, dex: S
       changes: [
         'Replace one passive slot with a sturdier check or revenge killer for this threat.',
         'Prefer a legal candidate that both resists its usual pressure and threatens it back.',
-        ...buildCompetitiveSetLines(exampleOptions),
+        ...buildCompetitiveSetLines(exampleOptions, team, validator),
       ],
       exampleOptions,
     });
@@ -226,7 +221,11 @@ export function buildPatchSuggestions(team: Team, report: AnalysisReport, dex: S
 
   const matchupIssue = report.issues.find((issue) => issue.code === 'bss-matchup-cluster-weak');
   if (matchupIssue) {
-    const exampleOptions = rankFromLegalPool(team, report, dex, { preferBulk: true, preferSpeed: true }, defaultBssMeta.suggestedPivots);
+    const exampleOptions = prioritizePreviewableCandidates(
+      rankFromLegalPool(team, report, dex, { preferBulk: true, preferSpeed: true }, defaultBssMeta.suggestedPivots),
+      team.format,
+      validator,
+    );
 
     suggestions.push({
       kind: 'patch',
@@ -236,7 +235,7 @@ export function buildPatchSuggestions(team: Team, report: AnalysisReport, dex: S
       changes: [
         `Focus on improving these matchups first: ${report.archetypes.weakMatchups.join(', ') || 'rough archetypes'}.`,
         'Use one slot to add either disruption, a sturdier pivot, or a better dedicated breaker depending on the cluster.',
-        ...buildCompetitiveSetLines(exampleOptions),
+        ...buildCompetitiveSetLines(exampleOptions, team, validator),
       ],
       exampleOptions,
     });
@@ -245,7 +244,11 @@ export function buildPatchSuggestions(team: Team, report: AnalysisReport, dex: S
   const pressureIssue = report.issues.find((issue) => issue.code.startsWith('type-pressure-'));
   if (pressureIssue) {
     const threatenedType = pressureIssue.relatedTypes?.[0] ?? topWeakType ?? 'Electric';
-    const exampleOptions = rankFromLegalPool(team, report, dex, { threatenedType, preferBulk: true });
+    const exampleOptions = prioritizePreviewableCandidates(
+      rankFromLegalPool(team, report, dex, { threatenedType, preferBulk: true }),
+      team.format,
+      validator,
+    );
 
     suggestions.push({
       kind: 'replace',
@@ -256,7 +259,7 @@ export function buildPatchSuggestions(team: Team, report: AnalysisReport, dex: S
       changes: [
         'Replace one exposed slot with a format-legal answer that actually resists or blanks this pressure line.',
         'Favor secondary utility such as pivoting, hazards, or recovery.',
-        ...buildCompetitiveSetLines(exampleOptions),
+        ...buildCompetitiveSetLines(exampleOptions, team, validator),
       ],
       exampleOptions,
     });
@@ -265,7 +268,11 @@ export function buildPatchSuggestions(team: Team, report: AnalysisReport, dex: S
   if (report.speed.fastCount === 0 || !report.speed.hasSpeedControl) {
     const isBss = report.profile.style === 'bss';
 
-    const exampleOptions = rankFromLegalPool(team, report, dex, { preferSpeed: true }, defaultBssMeta.suggestedSpeedControl);
+    const exampleOptions = prioritizePreviewableCandidates(
+      rankFromLegalPool(team, report, dex, { preferSpeed: true }, defaultBssMeta.suggestedSpeedControl),
+      team.format,
+      validator,
+    );
 
     suggestions.push({
       kind: 'patch',
@@ -284,7 +291,7 @@ export function buildPatchSuggestions(team: Team, report: AnalysisReport, dex: S
               'Add a Choice Scarf user or a naturally fast revenge killer.',
               'If the team is bulky, consider Thunder Wave or Tailwind support instead.',
             ]),
-        ...buildCompetitiveSetLines(exampleOptions),
+        ...buildCompetitiveSetLines(exampleOptions, team, validator),
       ],
       exampleOptions,
     });
@@ -292,7 +299,11 @@ export function buildPatchSuggestions(team: Team, report: AnalysisReport, dex: S
 
   const disruptionIssue = report.issues.find((issue) => issue.code === 'bss-disruption-low');
   if (disruptionIssue) {
-    const exampleOptions = rankFromLegalPool(team, report, dex, { preferBulk: true }, knownDisruptionLabels);
+    const exampleOptions = prioritizePreviewableCandidates(
+      rankFromLegalPool(team, report, dex, { preferBulk: true }, knownDisruptionLabels),
+      team.format,
+      validator,
+    );
 
     suggestions.push({
       kind: 'set-adjustment',
@@ -302,14 +313,18 @@ export function buildPatchSuggestions(team: Team, report: AnalysisReport, dex: S
       changes: [
         'Fit Taunt, Haze, Encore, phazing, or status utility on one likely bring-3 slot.',
         'Prefer the change on a legal Pokémon you already want to select often in preview.',
-        ...buildCompetitiveSetLines(exampleOptions),
+        ...buildCompetitiveSetLines(exampleOptions, team, validator),
       ],
       exampleOptions,
     });
   }
 
   if (suggestions.length === 0) {
-    const exampleOptions = rankFromLegalPool(team, report, dex, { preferBulk: true, preferSpeed: true }, defaultBssMeta.suggestedPivots);
+    const exampleOptions = prioritizePreviewableCandidates(
+      rankFromLegalPool(team, report, dex, { preferBulk: true, preferSpeed: true }, defaultBssMeta.suggestedPivots),
+      team.format,
+      validator,
+    );
 
     suggestions.push({
       kind: 'patch',
@@ -319,7 +334,7 @@ export function buildPatchSuggestions(team: Team, report: AnalysisReport, dex: S
       changes: [
         'Upgrade one slot to add either momentum or extra defensive utility.',
         'Prefer an adjustment that keeps your current game plan intact and improves at least one live matchup.',
-        ...buildCompetitiveSetLines(exampleOptions),
+        ...buildCompetitiveSetLines(exampleOptions, team, validator),
       ],
       exampleOptions,
     });

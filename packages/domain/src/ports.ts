@@ -80,8 +80,16 @@ export interface ValidationResult {
   normalizedTeam?: Team;
 }
 
+export interface ValidationSetResult {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+  normalizedSet?: PokemonSet;
+}
+
 export interface ValidationPort {
   validateTeam(team: Team, format: FormatId): Promise<ValidationResult> | ValidationResult;
+  validateSet(set: PokemonSet, format: FormatId): Promise<ValidationSetResult> | ValidationSetResult;
 }
 
 export interface TeamCodecPort {
