@@ -32,6 +32,7 @@ export function computeStructuralScore(team: Team, report: Omit<AnalysisReport, 
   if (report.profile.style === 'bss') {
     notes.push('BSS format profile applied.');
     defense += Math.round((report.threats.coverageScore - 50) / 10);
+    defense += Math.round(((report.archetypes.summaries.reduce((sum, entry) => sum + entry.score, 0) / Math.max(1, report.archetypes.summaries.length)) - 50) / 12);
     offense += report.battlePlan.speedControlRating === 'good' ? 4 : report.battlePlan.speedControlRating === 'poor' ? -4 : 1;
     utility += report.battlePlan.leadCandidates.length >= 2 ? 3 : 0;
     utility += Math.min(4, report.synergy.pivotCount * 2);

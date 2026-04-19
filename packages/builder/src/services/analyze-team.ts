@@ -48,6 +48,7 @@ export async function analyzeTeam(team: Team, deps: AnalyzeTeamDeps): Promise<An
     synergy: synergyAnalysis.synergy,
     battlePlan: bssAnalysis.battlePlan,
     threats: bssAnalysis.threats,
+    archetypes: bssAnalysis.archetypes,
     issues,
   };
 

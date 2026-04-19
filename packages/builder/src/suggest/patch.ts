@@ -79,6 +79,21 @@ export function buildPatchSuggestions(team: Team, report: AnalysisReport): Sugge
     });
   }
 
+  const matchupIssue = report.issues.find((issue) => issue.code === 'bss-matchup-cluster-weak');
+  if (matchupIssue) {
+    suggestions.push({
+      kind: 'patch',
+      title: 'Patch the weakest preview cluster',
+      rationale: 'The team looks uncomfortable into several recurring BSS archetypes rather than just one isolated threat.',
+      priority: 'high',
+      changes: [
+        `Focus on improving these matchups first: ${report.archetypes.weakMatchups.join(', ') || 'rough archetypes'}.`,
+        'Use one slot to add either disruption, a sturdier pivot, or a better dedicated breaker depending on the cluster.',
+      ],
+      exampleOptions: ['Taunt user', 'bulky pivot', 'strong breaker'],
+    });
+  }
+
   const pressureIssue = report.issues.find((issue) => issue.code.startsWith('type-pressure-'));
   if (pressureIssue) {
     const threatenedType = pressureIssue.relatedTypes?.[0] ?? 'Electric';

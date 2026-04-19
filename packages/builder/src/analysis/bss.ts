@@ -1,4 +1,6 @@
 import type {
+  ArchetypeMatrixSummary,
+  ArchetypeMatchupSummary,
   BattlePlanSummary,
   FormatProfileSummary,
   RoleSummary,
@@ -110,6 +112,200 @@ function getTeraDependency(team: Team, roles: RoleSummary[], dex: SpeciesDexPort
   return 'low';
 }
 
+interface ArchetypeProfile {
+  key: string;
+  label: string;
+  desiredRoles: string[];
+  wantsSpeed: boolean;
+  wantsDisruption: boolean;
+  wantsBulk: boolean;
+}
+
+const archetypeProfiles: ArchetypeProfile[] = [
+  {
+    key: 'hyper-offense',
+    label: 'Hyper offense',
+    desiredRoles: ['wallbreaker', 'setup-sweeper', 'speed-control'],
+    wantsSpeed: true,
+    wantsDisruption: true,
+    wantsBulk: false,
+  },
+  {
+    key: 'bulky-offense',
+    label: 'Bulky offense',
+    desiredRoles: ['pivot', 'wallbreaker', 'physical-wall', 'special-wall'],
+    wantsSpeed: true,
+    wantsDisruption: false,
+    wantsBulk: true,
+  },
+  {
+    key: 'balance',
+    label: 'Balance',
+    desiredRoles: ['pivot', 'physical-wall', 'special-wall', 'speed-control'],
+    wantsSpeed: false,
+    wantsDisruption: true,
+    wantsBulk: true,
+  },
+  {
+    key: 'stall-fat',
+    label: 'Stall / fat',
+    desiredRoles: ['wallbreaker', 'setup-sweeper'],
+    wantsSpeed: false,
+    wantsDisruption: true,
+    wantsBulk: false,
+  },
+  {
+    key: 'setup-snowball',
+    label: 'Setup-heavy',
+    desiredRoles: ['speed-control', 'physical-wall', 'special-wall'],
+    wantsSpeed: true,
+    wantsDisruption: true,
+    wantsBulk: true,
+  },
+  {
+    key: 'priority-pressure',
+    label: 'Priority-heavy',
+    desiredRoles: ['physical-wall', 'pivot'],
+    wantsSpeed: false,
+    wantsDisruption: true,
+    wantsBulk: true,
+  },
+];
+
+function clampScore(value: number): number {
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function scoreMemberForArchetype(
+  member: Team['members'][number],
+  roleSummary: RoleSummary,
+  archetype: ArchetypeProfile,
+  dex: SpeciesDexPort,
+): number {
+  const species = dex.getSpecies(member.species);
+  if (!species) return 0;
+
+  const moves = member.moves.map(normalize);
+  let score = 0;
+
+  for (const wantedRole of archetype.desiredRoles) {
+    if (roleSummary.roles.includes(wantedRole as never)) score += 3;
+  }
+
+  if (archetype.wantsSpeed && (species.baseStats.spe >= 100 || roleSummary.roles.includes('speed-control'))) score += 3;
+  if (archetype.wantsBulk && (roleSummary.roles.includes('physical-wall') || roleSummary.roles.includes('special-wall'))) score += 3;
+  if (archetype.wantsDisruption && hasTaggedMove(moves, disruptionMoves)) score += 3;
+  if (hasTaggedMove(moves, priorityMoves)) score += 2;
+  if (roleSummary.roles.includes('pivot')) score += 1;
+
+  return score;
+}
+
+function evaluateArchetypeMatchups(
+  team: Team,
+  dex: SpeciesDexPort,
+  roles: RoleSummary[],
+  speed: { fastestBaseSpeed: number; hasSpeedControl: boolean },
+  priorityCount: number,
+  disruptionCount: number,
+): ArchetypeMatrixSummary {
+  const pivotCount = roles.filter((entry) => entry.roles.includes('pivot')).length;
+  const wallbreakerCount = roles.filter((entry) => entry.roles.includes('wallbreaker')).length;
+  const setupCount = roles.filter((entry) => entry.roles.includes('setup-sweeper')).length;
+  const bulkyCount = roles.filter((entry) => entry.roles.includes('physical-wall') || entry.roles.includes('special-wall')).length;
+
+  const summaries: ArchetypeMatchupSummary[] = archetypeProfiles.map((archetype) => {
+    let score = 50;
+    const reasons: string[] = [];
+
+    if (archetype.key === 'hyper-offense') {
+      score += speed.hasSpeedControl ? 12 : 0;
+      score += priorityCount * 6;
+      score += disruptionCount * 4;
+      score += wallbreakerCount * 3;
+      if (!speed.hasSpeedControl && priorityCount === 0) reasons.push('Limited emergency speed into fast offensive lines.');
+    }
+
+    if (archetype.key === 'bulky-offense') {
+      score += pivotCount * 5;
+      score += bulkyCount * 4;
+      score += wallbreakerCount * 3;
+      if (pivotCount === 0) reasons.push('Few safe positioning tools into bulky offense mirrors.');
+    }
+
+    if (archetype.key === 'balance') {
+      score += pivotCount * 4;
+      score += bulkyCount * 4;
+      score += disruptionCount * 5;
+      if (disruptionCount === 0) reasons.push('Limited pressure against slow utility cores.');
+    }
+
+    if (archetype.key === 'stall-fat') {
+      score += wallbreakerCount * 6;
+      score += setupCount * 4;
+      score += disruptionCount * 5;
+      if (wallbreakerCount === 0) reasons.push('No clear breaker to force progress into fat structures.');
+    }
+
+    if (archetype.key === 'setup-snowball') {
+      score += disruptionCount * 7;
+      score += priorityCount * 4;
+      score += bulkyCount * 3;
+      if (disruptionCount === 0) reasons.push('Few anti-setup emergency buttons.');
+    }
+
+    if (archetype.key === 'priority-pressure') {
+      score += bulkyCount * 5;
+      score += pivotCount * 3;
+      score += priorityCount * 2;
+      if (bulkyCount === 0) reasons.push('Little structural padding into priority-based endgames.');
+    }
+
+    if (speed.fastestBaseSpeed >= 100) score += 3;
+    const normalizedScore = clampScore(score);
+    const rating: ArchetypeMatchupSummary['rating'] = normalizedScore >= 65 ? 'good' : normalizedScore >= 50 ? 'even' : 'rough';
+
+    const likelyBring = team.members
+      .map((member) => {
+        const roleSummary = roles.find((entry) => entry.member === (member.name || member.species)) ?? {
+          member: member.name || member.species,
+          roles: [],
+        };
+
+        return {
+          name: member.name || member.species,
+          score: scoreMemberForArchetype(member, roleSummary, archetype, dex),
+        };
+      })
+      .sort((left, right) => right.score - left.score)
+      .slice(0, 3)
+      .map((entry) => entry.name);
+
+    if (reasons.length === 0) {
+      if (rating === 'good') reasons.push('Current role compression looks solid into this preview pattern.');
+      if (rating === 'even') reasons.push('The matchup looks playable but not especially comfortable.');
+    }
+
+    return {
+      archetype: archetype.label,
+      rating,
+      score: normalizedScore,
+      likelyBring,
+      reasons,
+    };
+  });
+
+  const bestMatchups = summaries.filter((entry) => entry.rating === 'good').map((entry) => entry.archetype).slice(0, 3);
+  const weakMatchups = summaries.filter((entry) => entry.rating === 'rough').map((entry) => entry.archetype).slice(0, 3);
+
+  return {
+    summaries,
+    bestMatchups,
+    weakMatchups,
+    notes: ['Archetype matchup scoring is heuristic and focused on likely bring-3 preview plans.'],
+  };
+}
+
 function evaluateThreatPressure(
   threatName: string,
   team: Team,
@@ -183,6 +379,7 @@ export function analyzeBssPlan(
   profile: FormatProfileSummary;
   battlePlan: BattlePlanSummary;
   threats: ThreatCoverageSummary;
+  archetypes: ArchetypeMatrixSummary;
   issues: TeamIssue[];
 } {
   const style = isBssFormat(team.format) ? 'bss' : 'standard';
@@ -291,6 +488,8 @@ export function analyzeBssPlan(
     notes,
   };
 
+  const archetypes = evaluateArchetypeMatchups(team, dex, roles, speed, priorityCount, disruptionCount);
+
   const issues: TeamIssue[] = [];
 
   if (style === 'bss' && speedControlRating === 'poor') {
@@ -330,6 +529,15 @@ export function analyzeBssPlan(
     });
   }
 
+  if (style === 'bss' && archetypes.weakMatchups.length >= 2) {
+    issues.push({
+      code: 'bss-matchup-cluster-weak',
+      severity: 'warning',
+      summary: 'The team looks shaky into multiple common archetypes.',
+      details: `Most exposed preview patterns: ${archetypes.weakMatchups.join(', ')}.`,
+    });
+  }
+
   if (style === 'bss' && !mechanics.tera && team.members.some((member) => member.teraType)) {
     issues.push({
       code: 'format-no-tera',
@@ -358,6 +566,7 @@ export function analyzeBssPlan(
       notes,
     },
     threats,
+    archetypes,
     issues,
   };
 }

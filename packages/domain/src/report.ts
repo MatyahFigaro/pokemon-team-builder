@@ -82,6 +82,21 @@ export interface ThreatCoverageSummary {
   notes: string[];
 }
 
+export interface ArchetypeMatchupSummary {
+  archetype: string;
+  rating: 'good' | 'even' | 'rough';
+  score: number;
+  likelyBring: string[];
+  reasons: string[];
+}
+
+export interface ArchetypeMatrixSummary {
+  summaries: ArchetypeMatchupSummary[];
+  bestMatchups: string[];
+  weakMatchups: string[];
+  notes: string[];
+}
+
 export interface ScoreBreakdown {
   total: number;
   offense: number;
@@ -110,6 +125,7 @@ export interface AnalysisReport {
   synergy: SynergySummary;
   battlePlan: BattlePlanSummary;
   threats: ThreatCoverageSummary;
+  archetypes: ArchetypeMatrixSummary;
   issues: TeamIssue[];
   score: ScoreBreakdown;
   suggestions: Suggestion[];

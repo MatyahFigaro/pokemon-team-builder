@@ -80,6 +80,9 @@ export function formatAnalysisReport(report: AnalysisReport): string {
     report.profile.mechanics.zMoves ? 'Z-Moves' : null,
   ].filter(Boolean).join(', ') || 'None';
 
+  const bestArchetypes = report.archetypes.bestMatchups.join(', ') || 'None';
+  const weakArchetypes = report.archetypes.weakMatchups.join(', ') || 'None';
+
   return [
     `Format: ${report.format}`,
     `Legality: ${report.legality.valid ? 'valid' : 'invalid'}`,
@@ -93,6 +96,8 @@ export function formatAnalysisReport(report: AnalysisReport): string {
     `Likely picks: ${report.battlePlan.likelyPicks.join(', ') || 'None'}`,
     `Tera dependency: ${report.battlePlan.teraDependency === 'not-applicable' ? 'n/a' : report.battlePlan.teraDependency}`,
     `Threat coverage: ${report.threats.coverageScore}/100 from ${report.threats.consideredThreatCount} evaluated threats`,
+    `Best archetypes: ${bestArchetypes}`,
+    `Weak archetypes: ${weakArchetypes}`,
     `Top pressure threats: ${topThreats}`,
     `Top weakness pressure: ${topWeaknesses}`,
     '',
