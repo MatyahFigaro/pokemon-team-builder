@@ -486,8 +486,37 @@ function getLearnset(speciesName: string): string[] {
   const species = Dex.species.get(speciesName);
   if (!species.exists) return [];
 
-  const learnsetData = Dex.species.getLearnsetData(species.id) as { learnset?: Record<string, unknown> } | null;
-  return Object.keys(learnsetData?.learnset ?? {});
+  const pending = [species];
+  const visited = new Set<string>();
+  const learnset = new Set<string>();
+
+  while (pending.length > 0) {
+    const current = pending.shift();
+    if (!current?.exists) continue;
+
+    const currentId = toId(current.name || current.id);
+    if (!currentId || visited.has(currentId)) continue;
+    visited.add(currentId);
+
+    const learnsetData = Dex.species.getLearnsetData(current.id) as { learnset?: Record<string, unknown> } | null;
+    for (const moveId of Object.keys(learnsetData?.learnset ?? {})) {
+      learnset.add(moveId);
+    }
+
+    const parentNames = [
+      current.changesFrom,
+      current.baseSpecies && toId(current.baseSpecies) !== toId(current.name) ? current.baseSpecies : undefined,
+      typeof current.battleOnly === 'string' ? current.battleOnly : undefined,
+      ...(Array.isArray(current.battleOnly) ? current.battleOnly : []),
+    ].filter(Boolean) as string[];
+
+    for (const parentName of parentNames) {
+      const parent = Dex.species.get(parentName);
+      if (parent.exists) pending.push(parent);
+    }
+  }
+
+  return [...learnset];
 }
 
 function getProbeMoves(dex: any, species: any): string[] {
@@ -499,6 +528,54 @@ function getProbeMoves(dex: any, species: any): string[] {
 
   const move = dex.moves.get(chosenMoveId);
   return [move.exists ? move.name : chosenMoveId];
+}
+
+function isLegalListingSpecies(formatId: string, dex: any, validator: any, species: any): boolean {
+  const ability = (Object.values(species.abilities ?? {}) as string[]).find(Boolean);
+  const moves = getProbeMoves(dex, species);
+  const requiredItem = species.requiredItem ?? species.requiredItems?.[0];
+
+  if (ability && moves.length > 0) {
+    const directProblems = validator.validateSet({
+      species: species.name,
+      ability,
+      item: requiredItem,
+      moves,
+      level: 50,
+      evs: { hp: 1 },
+    }, {}) ?? [];
+
+    if (directProblems.length === 0) return true;
+  }
+
+  const mechanics = detectFormatMechanics(formatId);
+  if (!mechanics.mega || !requiredItem) return false;
+
+  const baseName = typeof species.battleOnly === 'string'
+    ? species.battleOnly
+    : Array.isArray(species.battleOnly)
+      ? species.battleOnly[0]
+      : species.baseSpecies;
+
+  if (!baseName) return false;
+
+  const baseSpecies = Dex.species.get(baseName);
+  if (!baseSpecies.exists) return false;
+
+  const baseAbility = (Object.values(baseSpecies.abilities ?? {}) as string[]).find(Boolean);
+  const baseMoves = getProbeMoves(dex, baseSpecies);
+  if (!baseAbility || baseMoves.length === 0) return false;
+
+  const transformedProblems = validator.validateSet({
+    species: baseSpecies.name,
+    ability: baseAbility,
+    item: requiredItem,
+    moves: baseMoves,
+    level: 50,
+    evs: { hp: 1 },
+  }, {}) ?? [];
+
+  return transformedProblems.length === 0;
 }
 
 export function listPokemonForFormat(options: ListPokemonOptions): FormatPokemonListResult {
@@ -514,21 +591,7 @@ export function listPokemonForFormat(options: ListPokemonOptions): FormatPokemon
 
     for (const species of dex.species.all() as any[]) {
       if (!species.exists) continue;
-
-      const ability = (Object.values(species.abilities ?? {}) as string[]).find(Boolean);
-      const moves = getProbeMoves(dex, species);
-      if (!ability || moves.length === 0) continue;
-
-      const set = {
-        species: species.name,
-        ability,
-        moves,
-        level: 50,
-        evs: { hp: 1 },
-      };
-
-      const problems = validator.validateSet(set, {});
-      if (problems?.length) continue;
+      if (!isLegalListingSpecies(options.format, dex, validator, species)) continue;
 
       legalSpecies.push({
         id: species.id,

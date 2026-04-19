@@ -7,18 +7,68 @@ import { fromShowdownSet, toShowdownTeam } from './mappers.js';
 
 const require = createRequire(import.meta.url);
 const showdown = require('pokemon-showdown') as any;
-const { TeamValidator } = showdown;
+const { TeamValidator, Dex } = showdown;
+
+function toId(value: string | undefined): string {
+  return (value ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+function normalizeSetForValidation(set: PokemonSet): PokemonSet {
+  const species = Dex.species.get(set.species);
+  if (!species.exists) return set;
+
+  const requiredItem = species.requiredItem ?? species.requiredItems?.[0];
+  const battleOnlyBase = typeof species.battleOnly === 'string'
+    ? species.battleOnly
+    : Array.isArray(species.battleOnly)
+      ? species.battleOnly[0]
+      : undefined;
+  const baseName = battleOnlyBase ?? species.baseSpecies;
+
+  if (!requiredItem) {
+    return set;
+  }
+
+  if (!baseName || toId(baseName) === toId(species.name)) {
+    return {
+      ...set,
+      item: set.item ?? requiredItem,
+    };
+  }
+
+  const baseSpecies = Dex.species.get(baseName);
+  if (!baseSpecies.exists) {
+    return {
+      ...set,
+      item: set.item ?? requiredItem,
+    };
+  }
+
+  const knownAbilities = (Object.values(baseSpecies.abilities ?? {}) as string[]).filter(Boolean);
+  const requestedAbility = String(set.ability ?? '').trim();
+  const ability = requestedAbility && knownAbilities.some((name) => toId(name) === toId(requestedAbility))
+    ? requestedAbility
+    : knownAbilities[0] ?? requestedAbility;
+
+  return {
+    ...set,
+    species: baseSpecies.name,
+    item: requiredItem,
+    ability,
+  };
+}
 
 export class ShowdownValidationAdapter implements ValidationPort {
   validateSet(set: PokemonSet, format: FormatId): ValidationSetResult {
     try {
       const resolved = resolveFormatForValidation(format);
       const validator = TeamValidator.get(resolved.resolvedFormat);
+      const normalized = normalizeSetForValidation(set);
       const showdownSet = {
-        ...set,
-        moves: [...set.moves],
-        evs: set.evs ? { ...set.evs } : undefined,
-        ivs: set.ivs ? { ...set.ivs } : undefined,
+        ...normalized,
+        moves: [...normalized.moves],
+        evs: normalized.evs ? { ...normalized.evs } : undefined,
+        ivs: normalized.ivs ? { ...normalized.ivs } : undefined,
       };
       const problems = validator.validateSet(showdownSet as never, {}) ?? [];
 
@@ -40,7 +90,11 @@ export class ShowdownValidationAdapter implements ValidationPort {
 
   validateTeam(team: Team, format: FormatId): ValidationResult {
     const workingFormat = format || team.format;
-    const showdownTeam = toShowdownTeam(team);
+    const normalizedMembers = team.members.map((member) => normalizeSetForValidation(member));
+    const showdownTeam = toShowdownTeam({
+      ...team,
+      members: normalizedMembers,
+    });
 
     try {
       const resolved = resolveFormatForValidation(workingFormat);
