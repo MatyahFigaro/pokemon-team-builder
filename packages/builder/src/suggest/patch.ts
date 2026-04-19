@@ -163,7 +163,7 @@ export function buildPatchSuggestions(team: Team, report: AnalysisReport, dex: S
   }
 
   const topWeakType = report.weaknesses.find((entry) => entry.weakCount >= 2)?.type;
-  const hazardIssue = report.issues.find((issue) => issue.code === 'missing-hazard-removal' || issue.code === 'bss-hazard-sensitive-no-removal');
+  const hazardIssue = report.issues.find((issue) => (issue.code === 'missing-hazard-removal' || issue.code === 'bss-hazard-sensitive-no-removal') && issue.severity !== 'info');
   if (hazardIssue) {
     const isBss = report.profile.style === 'bss';
 
