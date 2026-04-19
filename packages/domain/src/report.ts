@@ -106,6 +106,18 @@ export interface ScoreBreakdown {
   notes: string[];
 }
 
+export interface SimulationAnalysisSummary {
+  enabled: boolean;
+  opponentModel: string;
+  opponentPreview: string[];
+  iterations: number;
+  wins?: number;
+  losses?: number;
+  draws?: number;
+  winRate?: number;
+  notes: string[];
+}
+
 export interface Suggestion {
   kind: SuggestionKind;
   title: string;
@@ -127,6 +139,7 @@ export interface AnalysisReport {
   battlePlan: BattlePlanSummary;
   threats: ThreatCoverageSummary;
   archetypes: ArchetypeMatrixSummary;
+  simulation: SimulationAnalysisSummary;
   issues: TeamIssue[];
   score: ScoreBreakdown;
   suggestions: Suggestion[];

@@ -203,6 +203,9 @@ export function formatAnalysisReport(report: AnalysisReport, explain = false): s
 
   const bestArchetypes = report.archetypes.bestMatchups.join(', ') || 'None';
   const weakArchetypes = report.archetypes.weakMatchups.join(', ') || 'None';
+  const simulationLine = report.simulation.enabled && typeof report.simulation.winRate === 'number'
+    ? `${Math.round(report.simulation.winRate * 100)}% over ${report.simulation.iterations} games vs ${report.simulation.opponentPreview.join(', ') || report.simulation.opponentModel}`
+    : 'unavailable';
 
   return [
     `Format: ${report.format}`,
@@ -216,6 +219,7 @@ export function formatAnalysisReport(report: AnalysisReport, explain = false): s
     `Likely leads: ${report.battlePlan.leadCandidates.join(', ') || 'None'}`,
     `Likely picks: ${report.battlePlan.likelyPicks.join(', ') || 'None'}`,
     `Tera dependency: ${report.battlePlan.teraDependency === 'not-applicable' ? 'n/a' : report.battlePlan.teraDependency}`,
+    `Simulation: ${simulationLine}`,
     `Threat coverage: ${report.threats.coverageScore}/100 from ${report.threats.consideredThreatCount} evaluated threats`,
     `Best archetypes: ${bestArchetypes}`,
     `Weak archetypes: ${weakArchetypes}`,
