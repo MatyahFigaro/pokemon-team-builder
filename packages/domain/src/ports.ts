@@ -27,8 +27,44 @@ export interface BattleProfile extends SpeciesInfo {
   isMega: boolean;
 }
 
+export interface MoveInfo {
+  id: string;
+  name: string;
+  type: string;
+  category: string;
+  priority: number;
+  target?: string;
+  flags: string[];
+  shortDesc?: string;
+  selfSwitch?: boolean | string;
+  sideCondition?: string;
+  status?: string;
+  volatileStatus?: string;
+  boosts?: Record<string, number>;
+}
+
+export interface AbilityInfo {
+  id: string;
+  name: string;
+  shortDesc?: string;
+  desc?: string;
+  rating?: number;
+}
+
+export interface ItemInfo {
+  id: string;
+  name: string;
+  shortDesc?: string;
+  desc?: string;
+  megaStone?: string;
+  megaEvolves?: string;
+}
+
 export interface SpeciesDexPort {
   getSpecies(name: string): SpeciesInfo | null;
+  getMove(name: string): MoveInfo | null;
+  getAbility(name: string): AbilityInfo | null;
+  getItem(name: string): ItemInfo | null;
   getBattleProfile(set: PokemonSet, format?: FormatId): BattleProfile | null;
   getFormatMechanics(format: FormatId): FormatMechanicsInfo;
   getMatchupMultiplier(attackingType: string, set: PokemonSet, format?: FormatId): number;

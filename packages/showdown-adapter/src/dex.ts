@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
 
-import type { BattleProfile, FormatMechanicsInfo, PokemonSet, SpeciesDexPort, SpeciesInfo } from '@pokemon/domain';
+import type { AbilityInfo, BattleProfile, FormatMechanicsInfo, ItemInfo, MoveInfo, PokemonSet, SpeciesDexPort, SpeciesInfo } from '@pokemon/domain';
 
 const require = createRequire(import.meta.url);
 const showdown = require('pokemon-showdown') as any;
@@ -353,6 +353,81 @@ function detectFormatMechanics(formatId: string): FormatMechanicsInfo {
   return mechanics;
 }
 
+function buildMoveInfo(move: any): MoveInfo {
+  return {
+    id: move.id,
+    name: move.name,
+    type: move.type,
+    category: move.category,
+    priority: Number(move.priority ?? 0),
+    target: move.target,
+    flags: Object.keys(move.flags ?? {}),
+    shortDesc: move.shortDesc,
+    selfSwitch: move.selfSwitch,
+    sideCondition: move.sideCondition,
+    status: move.status,
+    volatileStatus: move.volatileStatus,
+    boosts: move.boosts ?? move.self?.boosts,
+  };
+}
+
+function buildAbilityInfo(ability: any): AbilityInfo {
+  return {
+    id: ability.id,
+    name: ability.name,
+    shortDesc: ability.shortDesc,
+    desc: ability.desc,
+    rating: ability.rating,
+  };
+}
+
+function buildItemInfo(item: any): ItemInfo {
+  return {
+    id: item.id,
+    name: item.name,
+    shortDesc: item.shortDesc,
+    desc: item.desc,
+    megaStone: item.megaStone,
+    megaEvolves: item.megaEvolves,
+  };
+}
+
+function getAbilityMatchupModifier(attackingType: string, abilityName: string): number {
+  const ability = Dex.abilities.get(abilityName);
+  const typeId = attackingType.toLowerCase();
+  const text = `${ability.shortDesc ?? ''} ${ability.desc ?? ''}`.toLowerCase();
+
+  if (
+    text.includes(`immune to ${typeId}`)
+    || text.includes(`${typeId} immunity`)
+    || text.includes(`${typeId}-type moves and`)
+  ) {
+    return 0;
+  }
+
+  if (text.includes(`double damage from ${typeId} moves`) || text.includes(`2x damage from ${typeId} moves`)) {
+    return 2;
+  }
+
+  if (text.includes(`1.25x by ${typeId}`) || text.includes(`power of ${typeId}-type moves is multiplied by 1.25`)) {
+    return 1.25;
+  }
+
+  if (
+    text.includes(`${typeId}-type moves against this pokemon deal damage with a halved offensive stat`)
+    || text.includes(`if a pokemon uses a ${typeId}-type attack against this pokemon, that pokemon's offensive stat is halved`)
+  ) {
+    return 0.5;
+  }
+
+  const abilityId = toId(abilityName);
+  if ((ABILITY_IMMUNITIES[abilityId] ?? []).some((type) => toId(type) === toId(attackingType))) {
+    return 0;
+  }
+
+  return ABILITY_TYPE_MODIFIERS[abilityId]?.[attackingType] ?? 1;
+}
+
 function buildSpeciesInfo(species: any): SpeciesInfo {
   const baseStats = {
     hp: species.baseStats.hp,
@@ -484,6 +559,24 @@ export class ShowdownDexAdapter implements SpeciesDexPort {
     return buildSpeciesInfo(species);
   }
 
+  getMove(name: string): MoveInfo | null {
+    const move = Dex.moves.get(name);
+    if (!move.exists) return null;
+    return buildMoveInfo(move);
+  }
+
+  getAbility(name: string): AbilityInfo | null {
+    const ability = Dex.abilities.get(name);
+    if (!ability.exists) return null;
+    return buildAbilityInfo(ability);
+  }
+
+  getItem(name: string): ItemInfo | null {
+    const item = Dex.items.get(name);
+    if (!item.exists) return null;
+    return buildItemInfo(item);
+  }
+
   getBattleProfile(set: PokemonSet, format?: string): BattleProfile | null {
     const species = resolveBattleSpecies(set, format);
     if (!species?.exists) return null;
@@ -510,12 +603,9 @@ export class ShowdownDexAdapter implements SpeciesDexPort {
     const baseMultiplier = this.getTypeEffectiveness(attackingType, profile.types);
     if (baseMultiplier === 0) return 0;
 
-    const abilityId = toId(profile.ability);
-    if ((ABILITY_IMMUNITIES[abilityId] ?? []).some((type) => toId(type) === toId(attackingType))) {
-      return 0;
-    }
+    const abilityModifier = getAbilityMatchupModifier(attackingType, profile.ability);
+    if (abilityModifier === 0) return 0;
 
-    const abilityModifier = ABILITY_TYPE_MODIFIERS[abilityId]?.[attackingType] ?? 1;
     return baseMultiplier * abilityModifier;
   }
 

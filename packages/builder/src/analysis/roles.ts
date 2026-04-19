@@ -22,6 +22,39 @@ function normalize(value: string | undefined): string {
   return (value ?? '').trim().toLowerCase();
 }
 
+function getMoveInfos(set: PokemonSet, dex: SpeciesDexPort) {
+  return set.moves
+    .map((move) => dex.getMove(move))
+    .filter((move): move is NonNullable<ReturnType<SpeciesDexPort['getMove']>> => Boolean(move));
+}
+
+function hasHazardSetterMove(set: PokemonSet, dex: SpeciesDexPort): boolean {
+  return getMoveInfos(set, dex).some((move) => ['stealthrock', 'spikes', 'toxicspikes', 'stickyweb'].includes(normalize(move.sideCondition)));
+}
+
+function hasHazardRemovalMove(set: PokemonSet, dex: SpeciesDexPort): boolean {
+  return getMoveInfos(set, dex).some((move) => hazardRemovalMoves.has(normalize(move.name)) || (move.shortDesc ?? '').toLowerCase().includes('hazards'));
+}
+
+function hasPivotMove(set: PokemonSet, dex: SpeciesDexPort): boolean {
+  return getMoveInfos(set, dex).some((move) => Boolean(move.selfSwitch)) || set.moves.map(normalize).some((move) => pivotMoves.has(move));
+}
+
+function hasSetupMove(set: PokemonSet, dex: SpeciesDexPort): boolean {
+  return getMoveInfos(set, dex).some((move) => {
+    const boosts = Object.values(move.boosts ?? {});
+    return boosts.some((value) => value > 0) && move.category === 'Status';
+  }) || set.moves.map(normalize).some((move) => setupMoves.has(move));
+}
+
+function hasSpeedControlMove(set: PokemonSet, dex: SpeciesDexPort): boolean {
+  return getMoveInfos(set, dex).some((move) => move.status === 'par' || speedControlMoves.has(normalize(move.name))) || set.moves.map(normalize).some((move) => speedControlMoves.has(move));
+}
+
+function hasClericMove(set: PokemonSet, dex: SpeciesDexPort): boolean {
+  return getMoveInfos(set, dex).some((move) => clericMoves.has(normalize(move.name))) || set.moves.map(normalize).some((move) => clericMoves.has(move));
+}
+
 function getAbilityAdjustedOffense(stat: number, ability: string, item: string): number {
   const id = normalize(ability);
   const heldItem = normalize(item);
@@ -40,13 +73,13 @@ export function detectRolesForSet(set: PokemonSet, dex: SpeciesDexPort, format?:
   const item = normalize(set.item);
   const profile = dex.getBattleProfile(set, format);
 
-  if (moveIds.some((move) => hazardSetterMoves.has(move))) roles.add('hazard-setter');
-  if (moveIds.some((move) => hazardRemovalMoves.has(move))) roles.add('hazard-removal');
-  if (moveIds.some((move) => pivotMoves.has(move))) roles.add('pivot');
-  if (moveIds.some((move) => setupMoves.has(move))) roles.add('setup-sweeper');
-  if (moveIds.some((move) => speedControlMoves.has(move)) || item === 'choice scarf') roles.add('speed-control');
+  if (hasHazardSetterMove(set, dex) || moveIds.some((move) => hazardSetterMoves.has(move))) roles.add('hazard-setter');
+  if (hasHazardRemovalMove(set, dex)) roles.add('hazard-removal');
+  if (hasPivotMove(set, dex)) roles.add('pivot');
+  if (hasSetupMove(set, dex)) roles.add('setup-sweeper');
+  if (hasSpeedControlMove(set, dex) || item === 'choice scarf') roles.add('speed-control');
   if (item === 'choice scarf') roles.add('scarfer');
-  if (moveIds.some((move) => clericMoves.has(move))) roles.add('cleric');
+  if (hasClericMove(set, dex)) roles.add('cleric');
   if (moveIds[0] === 'stealth rock' || moveIds[0] === 'spikes') roles.add('lead');
 
   if (profile) {
