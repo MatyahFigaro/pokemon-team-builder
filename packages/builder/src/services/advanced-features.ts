@@ -34,6 +34,7 @@ export interface TeamSetOptimizationReport {
 export interface MetaScoutingEntry {
   species: string;
   usage: number;
+  rank?: number;
   commonMoves: string[];
   commonItems: string[];
   commonAbility?: string;
@@ -44,6 +45,8 @@ export interface MetaScoutingReport {
   format: string;
   source: string;
   updatedAt: string;
+  resolvedFormat?: string;
+  exactMatch: boolean;
   topThreats: MetaScoutingEntry[];
   commonCores: string[];
   antiMetaIdeas: string[];
@@ -451,6 +454,8 @@ export async function scoutLiveMeta(format: string, dex: SpeciesDexPort): Promis
       format,
       source: 'none',
       updatedAt: 'unknown',
+      resolvedFormat: undefined,
+      exactMatch: false,
       topThreats: [],
       commonCores: [],
       antiMetaIdeas: ['No live usage feed could be loaded for this format right now.'],
@@ -458,13 +463,23 @@ export async function scoutLiveMeta(format: string, dex: SpeciesDexPort): Promis
     };
   }
 
+  const notes = ['Meta scouting is pulled from live monthly usage and teammates data rather than static species templates.'];
+  if (!snapshot.exactMatch) {
+    notes.unshift(`No exact public ladder exists for ${format}; using ${snapshot.resolvedFormat ?? 'the closest available public format'} as a proxy.`);
+  } else if (snapshot.source.includes('pokemon-champions-stats.vercel.app')) {
+    notes.unshift('Using the exact public Pokémon Champions ladder page for this format. Species ordering is rank-based from that live site.');
+  }
+
   return {
     format,
     source: snapshot.source,
     updatedAt: snapshot.updatedAt,
+    resolvedFormat: snapshot.resolvedFormat,
+    exactMatch: snapshot.exactMatch,
     topThreats: snapshot.species.slice(0, 10).map((entry) => ({
       species: entry.species,
       usage: entry.usage,
+      rank: entry.rank,
       commonMoves: getTopUsageNames(entry.moves, 4),
       commonItems: getTopUsageNames(entry.items, 2),
       commonAbility: getTopUsageNames(entry.abilities, 1)[0],
@@ -472,7 +487,7 @@ export async function scoutLiveMeta(format: string, dex: SpeciesDexPort): Promis
     })),
     commonCores: getCommonCores(format, 6),
     antiMetaIdeas: buildAntiMetaIdeas(format, dex),
-    notes: ['Meta scouting is pulled from live monthly usage and teammates data rather than static species templates.'],
+    notes,
   };
 }
 

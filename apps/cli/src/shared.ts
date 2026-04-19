@@ -177,12 +177,16 @@ export function formatOptimizationReport(report: TeamSetOptimizationReport): str
 export function formatMetaScouting(report: MetaScoutingReport): string {
   return [
     `Format: ${report.format}`,
-    `Live source: ${report.source}`,
+    `Usage source: ${report.source}`,
+    `Resolved ladder: ${report.resolvedFormat ?? 'unknown'}${report.exactMatch ? ' (exact)' : ' (proxy)'}`,
     `Updated: ${report.updatedAt}`,
+    '',
+    'Notes',
+    ...(report.notes.length ? report.notes.map((note) => `- ${note}`) : ['- None']),
     '',
     'Top threats',
     ...(report.topThreats.length
-      ? report.topThreats.map((entry) => `- ${entry.species} (${entry.usage}%): ${entry.commonMoves.join(', ') || 'no move sample'}${entry.commonTera ? ` | Tera ${entry.commonTera}` : ''}`)
+      ? report.topThreats.map((entry) => `- ${entry.species} (${entry.rank ? `#${entry.rank}` : `${entry.usage}%`}): ${entry.commonMoves.join(', ') || 'no move sample'}${entry.commonTera ? ` | Tera ${entry.commonTera}` : ''}`)
       : ['- None']),
     '',
     'Common cores',
