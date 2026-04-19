@@ -1,60 +1,59 @@
-Meganium-Mega @ Meganiumite  
-Ability: Mega Sol  
+Charizard-Mega-X @ Charizardite X  
+Ability: Tough Claws  
 Level: 50  
-EVs: 10 HP / 32 SpA / 24 Spe  
-Modest Nature  
-- Solar Beam  
-- Weather Ball  
-- Dazzling Gleam  
-- Synthesis  
+EVs: 2 HP / 32 Atk / 32 Spe  
+Jolly Nature  
+- Swords Dance  
+- Flare Blitz  
+- Scale Shot  
+- Roost  
+
+Garchomp @ Choice Scarf  
+Ability: Rough Skin  
+Level: 50  
+EVs: 2 HP / 32 Atk / 32 Spe  
+Jolly Nature  
+- Earthquake  
+- Outrage  
+- Stone Edge  
+- Crunch  
+
+Aegislash @ Shuca Berry  
+Ability: Stance Change  
+Level: 50  
+EVs: 24 HP / 32 Atk / 10 Spe  
+Adamant Nature  
+- Swords Dance  
+- Poltergeist  
+- Sacred Sword  
+- Shadow Sneak  
 
 Rotom-Wash @ Sitrus Berry  
 Ability: Levitate  
 Level: 50  
 EVs: 32 HP / 16 Def / 18 SpD  
 Bold Nature  
-- Volt Switch  
-- Thunderbolt  
 - Hydro Pump  
+- Volt Switch  
 - Will-O-Wisp  
+- Thunderbolt  
 
-Scizor-Mega @ Scizorite  
-Ability: Technician  
+Glimmora @ Focus Sash  
+Ability: Toxic Debris  
 Level: 50  
-EVs: 29 HP / 32 Atk / 5 Spe  
-Adamant Nature  
-- Bullet Punch  
-- Swords Dance  
-- Close Combat  
-- Roost  
+EVs: 3 HP / 1 Def / 30 SpA / 32 Spe  
+Timid Nature  
+- Stealth Rock  
+- Sludge Wave  
+- Earth Power  
+- Rock Tomb  
 
-Kingambit @ Black Glasses  
-Ability: Supreme Overlord  
+Floette-Mega @ Floettite  
+Ability: Fairy Aura  
 Level: 50  
-EVs: 23 HP / 32 Atk / 11 Spe  
-Adamant Nature  
-- Kowtow Cleave  
-- Iron Head  
-- Sucker Punch  
-- Swords Dance  
-
-Garchomp @ Choice Scarf  
-Ability: Rough Skin  
-Level: 50  
-EVs: 32 Atk / 2 SpD / 32 Spe  
-Jolly Nature  
-- Outrage  
-- Earthquake  
-- Rock Slide  
-- Fire Blast  
-
-Hatterene (F) @ Leftovers  
-Ability: Magic Bounce  
-Level: 50  
-EVs: 32 HP / 32 Def / 2 SpD  
-Bold Nature  
-- Draining Kiss  
-- Mystical Fire  
-- Psychic Noise  
+EVs: 16 HP / 17 SpA / 1 SpD / 32 Spe  
+Timid Nature  
 - Calm Mind  
-
+- Moonblast  
+- Psychic  
+- Draining Kiss  

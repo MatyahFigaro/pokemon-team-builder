@@ -14,18 +14,18 @@ function getHazardSensitivity(team: Team, dex: SpeciesDexPort): { sensitive: boo
   let rockWeakCount = 0;
 
   for (const member of team.members) {
-    const species = dex.getSpecies(member.species);
-    if (!species) continue;
+    const profile = dex.getBattleProfile(member, team.format);
+    if (!profile) continue;
 
-    const rockMultiplier = dex.getTypeEffectiveness('Rock', species.types);
+    const rockMultiplier = dex.getMatchupMultiplier('Rock', member, team.format);
     if (rockMultiplier >= 4) {
-      reasons.push(`${species.name} is 4x weak to Stealth Rock.`);
+      reasons.push(`${profile.name} is 4x weak to Stealth Rock.`);
     }
-    if (normalize(member.ability) === 'multiscale') {
-      reasons.push(`${species.name} wants Multiscale intact.`);
+    if (normalize(profile.ability) === 'multiscale') {
+      reasons.push(`${profile.name} wants Multiscale intact.`);
     }
     if (normalize(member.item) === 'focus sash') {
-      reasons.push(`${species.name} relies on Focus Sash staying unbroken.`);
+      reasons.push(`${profile.name} relies on Focus Sash staying unbroken.`);
     }
     if (rockMultiplier > 1) {
       rockWeakCount += 1;
@@ -50,12 +50,12 @@ export function analyzeSynergy(team: Team, dex: SpeciesDexPort, roles: RoleSumma
   const primaryTypes = new Map<string, number>();
 
   for (const member of team.members) {
-    const species = dex.getSpecies(member.species);
-    if (!species) continue;
+    const profile = dex.getBattleProfile(member, team.format);
+    if (!profile) continue;
 
-    for (const type of species.types) uniqueTypes.add(type);
+    for (const type of profile.types) uniqueTypes.add(type);
 
-    const primary = species.types[0];
+    const primary = profile.types[0];
     if (primary) {
       primaryTypes.set(primary, (primaryTypes.get(primary) ?? 0) + 1);
     }

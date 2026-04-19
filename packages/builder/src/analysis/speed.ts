@@ -5,7 +5,7 @@ export function analyzeSpeed(team: Team, dex: SpeciesDexPort, roles: RoleSummary
   issues: TeamIssue[];
 } {
   const speeds = team.members
-    .map((member) => dex.getSpecies(member.species)?.baseStats.spe ?? 0)
+    .map((member) => dex.getBattleProfile(member, team.format)?.baseStats.spe ?? 0)
     .filter((value) => value > 0);
 
   const slowCount = speeds.filter((value) => value < 70).length;

@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
 
-import type { FormatMechanicsInfo, SpeciesDexPort, SpeciesInfo } from '@pokemon/domain';
+import type { BattleProfile, FormatMechanicsInfo, PokemonSet, SpeciesDexPort, SpeciesInfo } from '@pokemon/domain';
 
 const require = createRequire(import.meta.url);
 const showdown = require('pokemon-showdown') as any;
@@ -146,6 +146,27 @@ const FORMAT_VALIDATION_FALLBACKS: Record<string, {resolvedFormat: string; warni
 
 const legalPokemonCache = new Map<string, FormatPokemonInfo[]>();
 const formatMechanicsCache = new Map<string, FormatMechanicsInfo>();
+
+const ABILITY_IMMUNITIES: Record<string, string[]> = {
+  levitate: ['Ground'],
+  flashfire: ['Fire'],
+  waterabsorb: ['Water'],
+  stormdrain: ['Water'],
+  dryskin: ['Water'],
+  voltabsorb: ['Electric'],
+  motordrive: ['Electric'],
+  lightningrod: ['Electric'],
+  sapsipper: ['Grass'],
+  eartheater: ['Ground'],
+  wellbakedbody: ['Fire'],
+};
+
+const ABILITY_TYPE_MODIFIERS: Record<string, Partial<Record<string, number>>> = {
+  thickfat: { Fire: 0.5, Ice: 0.5 },
+  heatproof: { Fire: 0.5 },
+  dryskin: { Fire: 1.25 },
+  fluffy: { Fire: 2 },
+};
 
 function toId(value: string | undefined): string {
   return (value ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '');
@@ -332,6 +353,58 @@ function detectFormatMechanics(formatId: string): FormatMechanicsInfo {
   return mechanics;
 }
 
+function buildSpeciesInfo(species: any): SpeciesInfo {
+  const baseStats = {
+    hp: species.baseStats.hp,
+    atk: species.baseStats.atk,
+    def: species.baseStats.def,
+    spa: species.baseStats.spa,
+    spd: species.baseStats.spd,
+    spe: species.baseStats.spe,
+  };
+
+  return {
+    id: species.id,
+    name: species.name,
+    types: [...species.types],
+    baseStats,
+    abilities: (Object.values(species.abilities ?? {}) as string[]).filter(Boolean),
+    tier: species.tier,
+    bst: Object.values(baseStats).reduce((sum, value) => sum + value, 0),
+  };
+}
+
+function resolveBattleSpecies(set: PokemonSet, format?: string): any | null {
+  const species = Dex.species.get(set.species);
+  if (!species.exists) return null;
+
+  if (!format) return species;
+
+  const mechanics = detectFormatMechanics(format);
+  if (!mechanics.mega) return species;
+
+  const item = Dex.items.get(set.item ?? '');
+  const baseSpecies = toId(species.baseSpecies || species.name);
+
+  if (item.exists && item.megaStone && toId(item.megaEvolves) === baseSpecies) {
+    const megaSpecies = Dex.species.get(item.megaStone);
+    if (megaSpecies.exists) return megaSpecies;
+  }
+
+  return species;
+}
+
+function resolveActiveAbility(species: any, set: PokemonSet): string {
+  const requestedAbility = String(set.ability ?? '').trim();
+  const knownAbilities = (Object.values(species.abilities ?? {}) as string[]).filter(Boolean);
+
+  if (requestedAbility && knownAbilities.some((ability) => toId(ability) === toId(requestedAbility))) {
+    return requestedAbility;
+  }
+
+  return requestedAbility || knownAbilities[0] || '';
+}
+
 function getProbeMoves(dex: any, species: any): string[] {
   const preferredMoves = ['protect', 'earthquake', 'thunderbolt', 'shadowball', 'moonblast', 'closecombat', 'tackle'];
   const learnsetData = dex.species.getLearnsetData(species.id) as { learnset?: Record<string, unknown> } | null;
@@ -408,28 +481,42 @@ export class ShowdownDexAdapter implements SpeciesDexPort {
     const species = Dex.species.get(name);
     if (!species.exists) return null;
 
-    const baseStats = {
-      hp: species.baseStats.hp,
-      atk: species.baseStats.atk,
-      def: species.baseStats.def,
-      spa: species.baseStats.spa,
-      spd: species.baseStats.spd,
-      spe: species.baseStats.spe,
-    };
+    return buildSpeciesInfo(species);
+  }
+
+  getBattleProfile(set: PokemonSet, format?: string): BattleProfile | null {
+    const species = resolveBattleSpecies(set, format);
+    if (!species?.exists) return null;
+
+    const info = buildSpeciesInfo(species);
 
     return {
-      id: species.id,
-      name: species.name,
-      types: [...species.types],
-      baseStats,
-      abilities: (Object.values(species.abilities ?? {}) as string[]).filter(Boolean),
-      tier: species.tier,
-      bst: Object.values(baseStats).reduce((sum, value) => sum + value, 0),
+      ...info,
+      baseSpecies: species.baseSpecies || species.name,
+      ability: resolveActiveAbility(species, set),
+      item: set.item,
+      isMega: Boolean(species.isMega),
     };
   }
 
   getFormatMechanics(format: string): FormatMechanicsInfo {
     return detectFormatMechanics(format);
+  }
+
+  getMatchupMultiplier(attackingType: string, set: PokemonSet, format?: string): number {
+    const profile = this.getBattleProfile(set, format);
+    if (!profile) return 1;
+
+    const baseMultiplier = this.getTypeEffectiveness(attackingType, profile.types);
+    if (baseMultiplier === 0) return 0;
+
+    const abilityId = toId(profile.ability);
+    if ((ABILITY_IMMUNITIES[abilityId] ?? []).some((type) => toId(type) === toId(attackingType))) {
+      return 0;
+    }
+
+    const abilityModifier = ABILITY_TYPE_MODIFIERS[abilityId]?.[attackingType] ?? 1;
+    return baseMultiplier * abilityModifier;
   }
 
   listAvailableSpecies(format: string): SpeciesInfo[] {
@@ -446,24 +533,7 @@ export class ShowdownDexAdapter implements SpeciesDexPort {
       const species = moddedDex.species.get(entry.name);
       if (!species.exists) continue;
 
-      const baseStats = {
-        hp: species.baseStats.hp,
-        atk: species.baseStats.atk,
-        def: species.baseStats.def,
-        spa: species.baseStats.spa,
-        spd: species.baseStats.spd,
-        spe: species.baseStats.spe,
-      };
-
-      availableSpecies.push({
-        id: species.id,
-        name: species.name,
-        types: [...species.types],
-        baseStats,
-        abilities: (Object.values(species.abilities ?? {}) as string[]).filter(Boolean),
-        tier: species.tier,
-        bst: Object.values(baseStats).reduce((sum, value) => sum + value, 0),
-      });
+      availableSpecies.push(buildSpeciesInfo(species));
     }
 
     return availableSpecies;

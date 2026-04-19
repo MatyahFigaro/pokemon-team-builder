@@ -12,15 +12,15 @@ export function analyzeWeaknesses(team: Team, dex: SpeciesDexPort): {
     const weakMembers: string[] = [];
 
     for (const member of team.members) {
-      const species = dex.getSpecies(member.species);
-      if (!species) continue;
+      const profile = dex.getBattleProfile(member, team.format);
+      if (!profile) continue;
 
-      const multiplier = dex.getTypeEffectiveness(type, species.types);
+      const multiplier = dex.getMatchupMultiplier(type, member, team.format);
       if (multiplier === 0) {
         immuneCount += 1;
       } else if (multiplier > 1) {
         weakCount += 1;
-        weakMembers.push(member.name || member.species);
+        weakMembers.push(member.name || profile.name || member.species);
       } else if (multiplier < 1) {
         resistCount += 1;
       }

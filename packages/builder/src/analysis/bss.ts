@@ -35,6 +35,30 @@ const priorityMoves = new Set([
   'first impression',
 ]);
 
+const immunityAbilityMap: Record<string, string[]> = {
+  Ground: ['levitate', 'earth eater'],
+  Fire: ['flash fire', 'well-baked body'],
+  Water: ['water absorb', 'storm drain', 'dry skin'],
+  Electric: ['volt absorb', 'motor drive', 'lightning rod'],
+  Grass: ['sap sipper'],
+};
+
+const powerAbilities = new Set([
+  'huge power',
+  'pure power',
+  'tough claws',
+  'adaptability',
+  'sheer force',
+  'supreme overlord',
+  'protosynthesis',
+  'quark drive',
+  'transistor',
+  'dragon\'s maw',
+  'fairy aura',
+  'dark aura',
+  'gorilla tactics',
+]);
+
 const disruptionMoves = new Set([
   'taunt',
   'haze',
@@ -52,8 +76,17 @@ function hasTaggedMove(moves: string[], pool: Set<string>): boolean {
   return moves.some((move) => pool.has(move));
 }
 
-function scoreLead(member: Team['members'][number], roles: RoleSummary, dex: SpeciesDexPort): number {
-  const species = dex.getSpecies(member.species);
+function hasPowerAbility(abilities: string[]): boolean {
+  return abilities.map(normalize).some((ability) => powerAbilities.has(ability));
+}
+
+function abilityCouldGrantImmunity(abilities: string[], attackingType: string): boolean {
+  const candidates = immunityAbilityMap[attackingType] ?? [];
+  return abilities.map(normalize).some((ability) => candidates.includes(ability));
+}
+
+function scoreLead(member: Team['members'][number], roles: RoleSummary, dex: SpeciesDexPort, format: string): number {
+  const species = dex.getBattleProfile(member, format);
   if (!species) return 0;
 
   const moves = member.moves.map(normalize);
@@ -67,14 +100,15 @@ function scoreLead(member: Team['members'][number], roles: RoleSummary, dex: Spe
   if (moves.includes('taunt')) score += 2;
   if (hasTaggedMove(moves, disruptionMoves)) score += 2;
   if (hasTaggedMove(moves, priorityMoves)) score += 1;
+  if (hasPowerAbility([species.ability])) score += 1;
   if (species.baseStats.spe >= 95) score += 2;
   if (species.baseStats.hp + species.baseStats.def >= 185) score += 1;
 
   return score;
 }
 
-function scorePick(member: Team['members'][number], roles: RoleSummary, dex: SpeciesDexPort): number {
-  const species = dex.getSpecies(member.species);
+function scorePick(member: Team['members'][number], roles: RoleSummary, dex: SpeciesDexPort, format: string): number {
+  const species = dex.getBattleProfile(member, format);
   if (!species) return 0;
 
   const moves = member.moves.map(normalize);
@@ -84,6 +118,7 @@ function scorePick(member: Team['members'][number], roles: RoleSummary, dex: Spe
   if (roles.roles.includes('speed-control')) score += 3;
   if (roles.roles.includes('pivot')) score += 2;
   if (hasTaggedMove(moves, priorityMoves)) score += 2;
+  if (hasPowerAbility([species.ability])) score += 2;
   if (species.baseStats.spe >= 100) score += 2;
   if (species.bst >= 540) score += 2;
   if (species.baseStats.hp + Math.max(species.baseStats.def, species.baseStats.spd) >= 190) score += 1;
@@ -318,6 +353,7 @@ function evaluateThreatPressure(
   const threatTypes = threat.types;
   const threatSpeed = threat.baseStats.spe;
   const threatIsPhysical = threat.baseStats.atk >= threat.baseStats.spa;
+  const threatHasPowerAbility = hasPowerAbility(threat.abilities);
 
   let hasResist = false;
   let hasFastCheck = false;
@@ -325,10 +361,10 @@ function evaluateThreatPressure(
   let hasOffensiveAnswer = false;
 
   for (const member of team.members) {
-    const species = dex.getSpecies(member.species);
+    const species = dex.getBattleProfile(member, team.format);
     if (!species) continue;
 
-    const incomingMultipliers = threatTypes.map((type) => dex.getTypeEffectiveness(type, species.types));
+    const incomingMultipliers = threatTypes.map((type) => dex.getMatchupMultiplier(type, member, team.format));
     if (incomingMultipliers.some((multiplier) => multiplier === 0 || multiplier < 1)) {
       hasResist = true;
     }
@@ -337,15 +373,15 @@ function evaluateThreatPressure(
       hasFastCheck = true;
     }
 
-    if (threatIsPhysical && species.baseStats.hp + species.baseStats.def >= 190) {
+    if (threatIsPhysical && species.baseStats.hp + species.baseStats.def >= (threatHasPowerAbility ? 205 : 190)) {
       hasBulkyCheck = true;
     }
 
-    if (!threatIsPhysical && species.baseStats.hp + species.baseStats.spd >= 190) {
+    if (!threatIsPhysical && species.baseStats.hp + species.baseStats.spd >= (threatHasPowerAbility ? 205 : 190)) {
       hasBulkyCheck = true;
     }
 
-    if (species.types.some((type) => dex.getTypeEffectiveness(type, threat.types) > 1)) {
+    if (species.types.some((type) => dex.getTypeEffectiveness(type, threat.types) > 1 && !abilityCouldGrantImmunity(threat.abilities, type))) {
       hasOffensiveAnswer = true;
     }
   }
@@ -404,8 +440,8 @@ export function analyzeBssPlan(
 
       return {
         name: member.name || member.species,
-        leadScore: scoreLead(member, roleSummary, dex),
-        pickScore: scorePick(member, roleSummary, dex),
+        leadScore: scoreLead(member, roleSummary, dex, team.format),
+        pickScore: scorePick(member, roleSummary, dex, team.format),
       };
     });
 
@@ -426,7 +462,7 @@ export function analyzeBssPlan(
 
   const legalPool = dex.listAvailableSpecies(team.format);
   const poolThreatNames = legalPool
-    .filter((species) => species.bst >= 570 || Math.max(species.baseStats.atk, species.baseStats.spa) >= 125 || species.baseStats.spe >= 110)
+    .filter((species) => species.bst >= 570 || Math.max(species.baseStats.atk, species.baseStats.spa) >= 125 || species.baseStats.spe >= 110 || hasPowerAbility(species.abilities))
     .slice(0, 60)
     .map((species) => species.name);
 
@@ -457,6 +493,7 @@ export function analyzeBssPlan(
 
   const notes: string[] = [
     `Threat scoring includes ${legalPool.length} legal species from the active format, even when exact sets are unknown.`,
+    'Ability-based immunities and Mega-transformed abilities are included in matchup scoring.',
     `Active mechanics: ${[
       mechanics.tera ? 'Tera' : null,
       mechanics.mega ? 'Mega' : null,
