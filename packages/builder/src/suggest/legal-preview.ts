@@ -1,10 +1,11 @@
 import type { FormatId, MoveInfo, PokemonSet, SpeciesDexPort, StatsTable, ValidationPort, ValidationSetResult } from '@pokemon/domain';
-import { getSpeciesUsage, getTopUsageNames, listManualSets } from '@pokemon/storage';
+import { getSpeciesUsage, getTopUsageNames, listManualSets, type ManualSetRecord } from '@pokemon/storage';
 
 export type PreviewRoleHint = 'default' | 'hazard-control' | 'disruption' | 'pivot' | 'speed' | 'bulky' | 'offense';
 
 interface PreviewOptions {
   roleHint?: PreviewRoleHint;
+  style?: string;
 }
 
 const PHYSICAL_SETUP_MOVE_IDS = new Set(['dragondance', 'swordsdance', 'bulkup', 'curse']);
@@ -347,23 +348,140 @@ function isPromiseLike<T>(value: T | Promise<T>): value is Promise<T> {
   return typeof (value as Promise<T> | undefined)?.then === 'function';
 }
 
-function getManualSetCandidates(speciesName: string, format: FormatId, dex: SpeciesDexPort): PokemonSet[] {
+function inferManualRoleHints(record: ManualSetRecord, dex: SpeciesDexPort, format: FormatId): Set<PreviewRoleHint> {
+  const hints = new Set<PreviewRoleHint>();
+  const roles = new Set([...(record.roles ?? []), ...(record.set.roles ?? [])]);
+  const moveInfos = getMoveInfos(record.set.moves, dex);
+  const itemId = toId(record.set.item);
+
+  if (roles.has('pivot') || moveInfos.some((move) => PIVOT_MOVE_IDS.has(move.id))) hints.add('pivot');
+  if (roles.has('hazard-removal') || roles.has('hazard-setter') || moveInfos.some((move) => HAZARD_CONTROL_MOVE_IDS.has(move.id))) hints.add('hazard-control');
+  if (
+    roles.has('speed-control')
+    || roles.has('scarfer')
+    || roles.has('lead')
+    || itemId === 'choicescarf'
+    || moveInfos.some((move) => SPEED_SETUP_MOVE_IDS.has(move.id) || PRIORITY_MOVE_IDS.has(move.id) || move.id === 'trickroom')
+  ) {
+    hints.add('speed');
+  }
+
+  if (
+    roles.has('physical-wall')
+    || roles.has('special-wall')
+    || roles.has('cleric')
+    || shouldUseBulkySpread(record.set.species, dex, record.set.moves, { roleHint: 'bulky' }, format)
+    || moveInfos.some((move) => RECOVERY_MOVE_IDS.has(move.id))
+  ) {
+    hints.add('bulky');
+  }
+
+  if (
+    roles.has('wallbreaker')
+    || roles.has('physical-attacker')
+    || roles.has('special-attacker')
+    || roles.has('setup-sweeper')
+    || moveInfos.some((move) => isSetupMoveForCategory(move, getPreferredCategory(record.set.species, dex, format)))
+  ) {
+    hints.add('offense');
+  }
+
+  if (hints.size === 0) hints.add('default');
+  return hints;
+}
+
+function inferManualStyleIds(record: ManualSetRecord, dex: SpeciesDexPort, format: FormatId): Set<string> {
+  const styles = new Set((record.styles ?? []).map((style) => toId(style)));
+  const text = `${record.label ?? ''} ${record.notes ?? ''}`.toLowerCase();
+  const moveIds = new Set(getMoveInfos(record.set.moves, dex).map((move) => move.id));
+  const abilityId = toId(record.set.ability);
+
+  if (text.includes('bulky offense') || text.includes('bulky-offense')) styles.add('bulkyoffense');
+  if (text.includes('hyper offense') || text.includes('hyper-offense')) styles.add('hyperoffense');
+  if (text.includes('trick room') || text.includes('trick-room')) styles.add('trickroom');
+  if (text.includes('balance') || text.includes('balanced')) styles.add('balance');
+  if (text.includes('rain')) styles.add('rain');
+
+  if (moveIds.has('trickroom')) styles.add('trickroom');
+  if (moveIds.has('raindance') || abilityId === 'swiftswim' || abilityId === 'drizzle') styles.add('rain');
+
+  const species = dex.getSpecies(record.set.species);
+  if (species && Math.max(species.baseStats.atk, species.baseStats.spa) >= 115 && species.baseStats.spe >= 85) {
+    styles.add('hyperoffense');
+  }
+
+  if (species && shouldUseBulkySpread(record.set.species, dex, record.set.moves, { roleHint: 'bulky' }, format)) {
+    styles.add('balance');
+    if (moveIds.size >= 3) styles.add('bulkyoffense');
+  }
+
+  return styles;
+}
+
+function scoreManualSetCandidate(
+  record: ManualSetRecord,
+  speciesName: string,
+  format: FormatId,
+  dex: SpeciesDexPort,
+  options: PreviewOptions = {},
+): number {
+  const requested = dex.getSpecies(speciesName);
+  const requestedSpeciesId = toId(speciesName);
+  const requestedRequiredItem = requested?.requiredItem ? toId(requested.requiredItem) : '';
+  const storedSpeciesId = toId(record.set.species);
+  const storedItemId = toId(record.set.item);
+  const roleHints = inferManualRoleHints(record, dex, format);
+  const styleIds = inferManualStyleIds(record, dex, format);
+
+  let score = storedSpeciesId === requestedSpeciesId ? 120 : 80;
+  if (requestedRequiredItem && storedItemId === requestedRequiredItem) score += 25;
+
+  if (options.roleHint && options.roleHint !== 'default') {
+    if (roleHints.has(options.roleHint)) score += 40;
+    else if (options.roleHint === 'offense' && roleHints.has('speed')) score += 12;
+    else if (options.roleHint === 'speed' && roleHints.has('offense')) score += 12;
+  }
+
+  const requestedStyleId = toId(options.style);
+  if (requestedStyleId) {
+    if (styleIds.has(requestedStyleId)) score += 35;
+    else if (requestedStyleId === 'bulkyoffense' && (styleIds.has('balance') || styleIds.has('hyperoffense'))) score += 10;
+    else if (requestedStyleId === 'balance' && styleIds.has('bulkyoffense')) score += 10;
+  }
+
+  if (record.label && toId(record.label).includes('default')) score += 4;
+  if (record.notes) score += 2;
+  score += Math.min(8, record.set.moves.length * 2);
+
+  return score;
+}
+
+function getManualSetCandidates(
+  speciesName: string,
+  format: FormatId,
+  dex: SpeciesDexPort,
+  options: PreviewOptions = {},
+): ManualSetRecord[] {
   const requested = dex.getSpecies(speciesName);
   const requestedRequiredItem = requested?.requiredItem ? toId(requested.requiredItem) : '';
   const requestedSpeciesId = toId(speciesName);
 
   return listManualSets({ format })
-    .map((record) => record.set)
-    .filter((set) => {
-      const storedSpeciesId = toId(set.species);
-      const storedItemId = toId(set.item);
+    .filter((record) => {
+      const storedSpeciesId = toId(record.set.species);
+      const storedItemId = toId(record.set.item);
 
       if (storedSpeciesId === requestedSpeciesId) return true;
       if (requestedRequiredItem && storedItemId === requestedRequiredItem) return true;
 
-      const storedSpecies = dex.getSpecies(set.species);
+      const storedSpecies = dex.getSpecies(record.set.species);
       const storedRequiredItem = storedSpecies?.requiredItem ? toId(storedSpecies.requiredItem) : '';
       return Boolean(storedRequiredItem && requestedRequiredItem && storedRequiredItem === requestedRequiredItem);
+    })
+    .sort((left, right) => {
+      const scoreDiff = scoreManualSetCandidate(right, speciesName, format, dex, options) - scoreManualSetCandidate(left, speciesName, format, dex, options);
+      if (scoreDiff !== 0) return scoreDiff;
+      return right.updatedAt.localeCompare(left.updatedAt);
     });
 }
 
@@ -372,11 +490,12 @@ function getValidatedManualSet(
   format: FormatId,
   dex: SpeciesDexPort,
   validator: ValidationPort,
+  options: PreviewOptions = {},
 ): PokemonSet | null {
-  for (const candidate of getManualSetCandidates(speciesName, format, dex)) {
-    const result = validator.validateSet(candidate, format);
+  for (const record of getManualSetCandidates(speciesName, format, dex, options)) {
+    const result = validator.validateSet(record.set, format);
     if (isPromiseLike<ValidationSetResult>(result)) continue;
-    if (result.valid) return result.normalizedSet ?? candidate;
+    if (result.valid) return result.normalizedSet ?? record.set;
   }
 
   return null;
@@ -443,7 +562,7 @@ export function getCompetitiveSet(
   const species = dex.getSpecies(speciesName);
   if (!species) return null;
 
-  const manualSet = getValidatedManualSet(species.name, format, dex, validator);
+  const manualSet = getValidatedManualSet(species.name, format, dex, validator, options);
   if (manualSet) return manualSet;
 
   const moves = buildMoves(species.name, format, dex, options);

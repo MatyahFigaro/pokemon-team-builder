@@ -708,8 +708,10 @@ export async function buildWithConstraints(constraints: BuildConstraints, deps: 
   const seedMembers = anchors
     .map((speciesName) => {
       const roleHint = getBuildRoleHint(speciesName, deps.dex, constraints.style);
-      return getCompetitiveSet(speciesName, constraints.format, deps.dex, deps.validator, { roleHint })
-        ?? buildAnchorSeedSet(speciesName, constraints.format, deps.dex, deps.validator, roleHint);
+      return getCompetitiveSet(speciesName, constraints.format, deps.dex, deps.validator, {
+        roleHint,
+        style: constraints.style,
+      }) ?? buildAnchorSeedSet(speciesName, constraints.format, deps.dex, deps.validator, roleHint);
     })
     .filter((set): set is PokemonSet => Boolean(set));
 
@@ -769,6 +771,7 @@ export async function buildWithConstraints(constraints: BuildConstraints, deps: 
 
       const preview = getCompetitiveSetPreview(species.name, constraints.format, deps.dex, deps.validator, {
         roleHint: getBuildRoleHint(species.name, deps.dex, constraints.style),
+        style: constraints.style,
       });
       if (preview) score += 3;
 
