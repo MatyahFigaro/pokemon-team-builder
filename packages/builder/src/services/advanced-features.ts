@@ -108,6 +108,34 @@ const BUILD_PIVOT_MOVES = ['U-turn', 'Volt Switch', 'Parting Shot', 'Flip Turn',
 const BUILD_RECOVERY_MOVES = ['Recover', 'Roost', 'Slack Off', 'Soft-Boiled', 'Moonlight', 'Morning Sun', 'Synthesis', 'Rest'];
 const BUILD_SUPPORT_MOVES = ['Will-O-Wisp', 'Thunder Wave', 'Yawn', 'Encore', 'Taunt', 'Trick Room'];
 
+interface ClassicTypeCore {
+  name: string;
+  types: string[];
+  preferredStyles: Array<NonNullable<BuildConstraints['style']>>;
+  pressureTypes: string[];
+}
+
+const CLASSIC_TYPE_CORES: ClassicTypeCore[] = [
+  {
+    name: 'Fire / Water / Grass',
+    types: ['Fire', 'Water', 'Grass'],
+    preferredStyles: ['balance', 'bulky-offense'],
+    pressureTypes: ['Dragon', 'Flying'],
+  },
+  {
+    name: 'Steel / Fairy / Dragon',
+    types: ['Steel', 'Fairy', 'Dragon'],
+    preferredStyles: ['balance', 'bulky-offense', 'hyper-offense'],
+    pressureTypes: ['Ground', 'Ghost'],
+  },
+  {
+    name: 'Fighting / Dark / Psychic',
+    types: ['Fighting', 'Dark', 'Psychic'],
+    preferredStyles: ['hyper-offense', 'bulky-offense'],
+    pressureTypes: ['Fairy', 'Flying'],
+  },
+];
+
 function getRoleHint(roles: string[]): PreviewRoleHint {
   if (roles.includes('hazard-removal')) return 'hazard-control';
   if (roles.includes('pivot')) return 'pivot';
@@ -243,13 +271,57 @@ function inferMissingRolesFromAnchors(seedTeam: Team, report: Awaited<ReturnType
   return [...inferred];
 }
 
+function scoreClassicTypeCoreFit(
+  candidate: NonNullable<ReturnType<SpeciesDexPort['getSpecies']>>,
+  seedTeam: Team,
+  style: BuildConstraints['style'],
+  dex: SpeciesDexPort,
+): { score: number; reasons: string[]; notes: string[] } {
+  const teamTypes = new Set(seedTeam.members.flatMap((member) => dex.getSpecies(member.species)?.types ?? []));
+  const candidateTypes = new Set(candidate.types);
+  let score = 0;
+  const reasons: string[] = [];
+  const notes: string[] = [];
+
+  for (const core of CLASSIC_TYPE_CORES) {
+    const present = core.types.filter((type) => teamTypes.has(type));
+    if (present.length === 0) continue;
+
+    const missing = core.types.filter((type) => !teamTypes.has(type));
+    const added = missing.filter((type) => candidateTypes.has(type));
+
+    if (added.length > 0) {
+      score += (present.length >= 2 ? 10 : 5) + (added.length * 3);
+      if (style && core.preferredStyles.includes(style)) score += 2;
+      reasons.push(`helps complete a ${core.name} backbone`);
+      notes.push(`Recognized a ${core.name} shell among the anchors and boosted type-completing partners.`);
+    }
+
+    if (missing.length === 0) {
+      const coveredPressure = core.pressureTypes.filter((type) => dex.getTypeEffectiveness(type, candidate.types) < 1);
+      if (coveredPressure.length > 0) {
+        score += Math.min(6, coveredPressure.length * 3);
+        reasons.push(`helps cover common ${core.name} pressure from ${coveredPressure.join(', ')}`);
+        notes.push(`The builder is also patching typical ${core.name} pressure lines such as ${core.pressureTypes.join(' and ')} attacks.`);
+      }
+    }
+  }
+
+  return {
+    score,
+    reasons: Array.from(new Set(reasons)),
+    notes: Array.from(new Set(notes)),
+  };
+}
+
 function scoreAnchorFit(
   candidate: NonNullable<ReturnType<SpeciesDexPort['getSpecies']>>,
   seedTeam: Team,
   format: string,
   dex: SpeciesDexPort,
-): { score: number; reasons: string[] } {
-  if (seedTeam.members.length === 0) return { score: 0, reasons: [] };
+  style?: BuildConstraints['style'],
+): { score: number; reasons: string[]; notes: string[] } {
+  if (seedTeam.members.length === 0) return { score: 0, reasons: [], notes: [] };
 
   const anchorIds = new Set(seedTeam.members.map((member) => toId(member.species)));
   const anchorTypes = new Set(seedTeam.members.flatMap((member) => dex.getSpecies(member.species)?.types ?? []));
@@ -258,6 +330,12 @@ function scoreAnchorFit(
 
   let score = teammateMatches.length * 4;
   const reasons: string[] = [];
+  const notes: string[] = [];
+
+  const classicCoreFit = scoreClassicTypeCoreFit(candidate, seedTeam, style, dex);
+  score += classicCoreFit.score;
+  reasons.push(...classicCoreFit.reasons);
+  notes.push(...classicCoreFit.notes);
 
   if (teammateMatches.length > 0) {
     reasons.push(`shows live teammate synergy with ${teammateMatches.slice(0, 2).map((ally) => ally.name).join(', ')}`);
@@ -298,6 +376,7 @@ function scoreAnchorFit(
   return {
     score,
     reasons: Array.from(new Set(reasons)),
+    notes: Array.from(new Set(notes)),
   };
 }
 
@@ -734,7 +813,7 @@ export async function buildWithConstraints(constraints: BuildConstraints, deps: 
     .map((species) => {
       let score = Math.round(getUsageWeight(constraints.format, species.name) * 12);
       const reasons: string[] = [];
-      const anchorFit = scoreAnchorFit(species, seedTeam, constraints.format, deps.dex);
+      const anchorFit = scoreAnchorFit(species, seedTeam, constraints.format, deps.dex, constraints.style);
 
       score += anchorFit.score;
       reasons.push(...anchorFit.reasons);
