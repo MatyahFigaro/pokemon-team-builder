@@ -54,7 +54,7 @@ export async function analyzeTeam(team: Team, deps: AnalyzeTeamDeps): Promise<An
 
   const score = computeStructuralScore(workingTeam, baseReport);
   const suggestions = [
-    ...buildPatchSuggestions(workingTeam, { ...baseReport, score, suggestions: [] }),
+    ...buildPatchSuggestions(workingTeam, { ...baseReport, score, suggestions: [] }, deps.dex),
     ...buildCompletionSuggestions(workingTeam, { ...baseReport, score, suggestions: [] }),
   ].slice(0, 3);
 
