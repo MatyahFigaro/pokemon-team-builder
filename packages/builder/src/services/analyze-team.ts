@@ -1,4 +1,5 @@
 import type { AnalysisReport, SpeciesDexPort, Team, ValidationPort } from '@pokemon/domain';
+import { preloadUsageAnalytics } from '@pokemon/storage';
 
 import { analyzeBssPlan } from '../analysis/bss.js';
 import { summarizeRoles } from '../analysis/roles.js';
@@ -17,6 +18,8 @@ export interface AnalyzeTeamDeps {
 export async function analyzeTeam(team: Team, deps: AnalyzeTeamDeps): Promise<AnalysisReport> {
   const validation = await deps.validator.validateTeam(team, team.format);
   const workingTeam = validation.normalizedTeam ?? team;
+
+  await preloadUsageAnalytics(workingTeam.format);
 
   const roles = summarizeRoles(workingTeam, deps.dex);
   const weaknessAnalysis = analyzeWeaknesses(workingTeam, deps.dex);

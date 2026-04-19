@@ -1,4 +1,5 @@
 import type { AnalysisReport, SpeciesDexPort, Suggestion, Team, ValidationPort } from '@pokemon/domain';
+import { getSpeciesUsage, getUsageWeight } from '@pokemon/storage';
 
 import { getCompetitiveSetPreview, prioritizePreviewableCandidates, type PreviewRoleHint } from './legal-preview.js';
 
@@ -84,8 +85,9 @@ function scoreAgainstThreat(candidateName: string, threatName: string, dex: Spec
 
 function getThreatAnswerBoost(candidateName: string, report: AnalysisReport, dex: SpeciesDexPort): number {
   return report.threats.topPressureThreats.reduce((score, threat) => {
-    const weight = threat.pressure === 'high' ? 1.2 : 1;
-    return score + scoreAgainstThreat(candidateName, threat.species, dex) * weight;
+    const pressureWeight = threat.pressure === 'high' ? 1.25 : 1;
+    const usageWeight = 0.75 + getUsageWeight(report.format, threat.species);
+    return score + scoreAgainstThreat(candidateName, threat.species, dex) * pressureWeight * usageWeight;
   }, 0);
 }
 
@@ -115,12 +117,20 @@ function rankCompletionCandidates(team: Team, report: AnalysisReport, dex: Speci
     .filter((species) => !existing.has(normalize(species.name)))
     .map((species) => {
       let score = 0;
+      const usageRecord = getSpeciesUsage(team.format, species.name);
+      const usageWeight = getUsageWeight(team.format, species.name);
+      const usageMoveNames = new Set((usageRecord?.moves ?? []).map((move) => normalize(move.name)));
+      const teammateSynergyHits = (usageRecord?.teammates ?? []).filter((ally) => team.members.some((member) => normalize(member.species) === normalize(ally.name))).length;
 
       if (need.includes('speed')) score += species.baseStats.spe >= 120 ? 12 : species.baseStats.spe >= 100 ? 8 : 0;
       if (need.includes('pivot') && canLearnAnyMove(species.name, PIVOT_MOVES, dex)) score += 10;
       if (need.includes('hazard') && canLearnAnyMove(species.name, HAZARD_CONTROL_MOVES, dex)) score += 8;
+      if (need.includes('pivot') && PIVOT_MOVES.some((move) => usageMoveNames.has(normalize(move)))) score += 4;
+      if (need.includes('hazard') && HAZARD_CONTROL_MOVES.some((move) => usageMoveNames.has(normalize(move)))) score += 4;
       if (species.bst >= 540) score += 6;
       if (Math.max(species.baseStats.atk, species.baseStats.spa) >= 120) score += 4;
+      score += Math.round(usageWeight * (report.profile.style === 'bss' ? 12 : 8));
+      score += teammateSynergyHits * (report.profile.style === 'bss' ? 3 : 2);
 
       if (topWeakType) {
         const multiplier = dex.getTypeEffectiveness(topWeakType, species.types);

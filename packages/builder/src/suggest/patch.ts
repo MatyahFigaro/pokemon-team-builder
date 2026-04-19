@@ -1,4 +1,5 @@
 import type { AnalysisReport, SpeciesDexPort, Suggestion, Team, TeamIssue, ValidationPort } from '@pokemon/domain';
+import { getSpeciesUsage, getUsageWeight } from '@pokemon/storage';
 
 import { getCompetitiveSetPreview, prioritizePreviewableCandidates, type PreviewRoleHint } from './legal-preview.js';
 
@@ -84,10 +85,16 @@ function scoreCandidate(
 
   let score = 0;
   const teamTypeSet = new Set(team.members.flatMap((member) => dex.getSpecies(member.species)?.types ?? []));
+  const usageRecord = getSpeciesUsage(team.format, candidateName);
+  const usageWeight = getUsageWeight(team.format, candidateName);
+  const usageMoveNames = new Set((usageRecord?.moves ?? []).map((move) => normalize(move.name)));
+  const teammateSynergyHits = (usageRecord?.teammates ?? []).filter((ally) => team.members.some((member) => normalize(member.species) === normalize(ally.name))).length;
 
   if (report.profile.style === 'bss') score += species.bst >= 540 ? 8 : species.bst >= 500 ? 4 : 0;
   score += Math.max(species.baseStats.atk, species.baseStats.spa) >= 120 ? 4 : 0;
   score += hasPowerAbility(species.abilities, dex) ? 3 : 0;
+  score += Math.round(usageWeight * (report.profile.style === 'bss' ? 12 : 8));
+  score += teammateSynergyHits * (report.profile.style === 'bss' ? 3 : 2);
 
   if (options.preferSpeed) {
     score += species.baseStats.spe >= 120 ? 10 : species.baseStats.spe >= 100 ? 7 : species.baseStats.spe >= 90 ? 4 : 0;
@@ -99,14 +106,17 @@ function scoreCandidate(
 
   if (options.preferRemoval && canLearnAnyMove(species.name, HAZARD_CONTROL_MOVES, dex)) {
     score += 12;
+    if (HAZARD_CONTROL_MOVES.some((move) => usageMoveNames.has(normalize(move)))) score += 5;
   }
 
   if (options.preferDisruption && canLearnAnyMove(species.name, DISRUPTION_MOVES, dex)) {
     score += 10;
+    if (DISRUPTION_MOVES.some((move) => usageMoveNames.has(normalize(move)))) score += 4;
   }
 
   if (options.preferPivot && canLearnAnyMove(species.name, PIVOT_MOVES, dex)) {
     score += 8;
+    if (PIVOT_MOVES.some((move) => usageMoveNames.has(normalize(move)))) score += 4;
   }
 
   if (options.threatenedType) {
@@ -222,8 +232,9 @@ function scoreAgainstThreat(candidateName: string, threatName: string, dex: Spec
 
 function getThreatAnswerBoost(candidateName: string, report: AnalysisReport, dex: SpeciesDexPort): number {
   return report.threats.topPressureThreats.reduce((score, threat) => {
-    const weight = threat.pressure === 'high' ? 1.2 : 1;
-    return score + scoreAgainstThreat(candidateName, threat.species, dex) * weight;
+    const pressureWeight = threat.pressure === 'high' ? 1.25 : 1;
+    const usageWeight = 0.75 + getUsageWeight(report.format, threat.species);
+    return score + scoreAgainstThreat(candidateName, threat.species, dex) * pressureWeight * usageWeight;
   }, 0);
 }
 

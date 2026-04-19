@@ -72,6 +72,7 @@ export interface ThreatPressureSummary {
   species: string;
   pressure: 'low' | 'moderate' | 'high';
   reasons: string[];
+  usagePercent?: number;
 }
 
 export interface ThreatCoverageSummary {

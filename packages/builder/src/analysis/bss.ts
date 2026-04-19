@@ -10,7 +10,7 @@ import type {
   ThreatCoverageSummary,
   ThreatPressureSummary,
 } from '@pokemon/domain';
-import { defaultBssMeta } from '@pokemon/storage';
+import { defaultBssMeta, getSpeciesUsage, getTopUsageThreatNames, getUsageWeight } from '@pokemon/storage';
 
 function normalize(value: string | undefined): string {
   return (value ?? '').trim().toLowerCase();
@@ -101,6 +101,7 @@ function scoreLead(member: Team['members'][number], roles: RoleSummary, dex: Spe
   if (hasPowerAbility([species.ability], dex)) score += 1;
   if (species.baseStats.spe >= 95) score += 2;
   if (species.baseStats.hp + species.baseStats.def >= 185) score += 1;
+  score += Math.round(getUsageWeight(format, species.name) * 4);
 
   return score;
 }
@@ -119,6 +120,7 @@ function scorePick(member: Team['members'][number], roles: RoleSummary, dex: Spe
   if (species.baseStats.spe >= 100) score += 2;
   if (species.bst >= 540) score += 2;
   if (species.baseStats.hp + Math.max(species.baseStats.def, species.baseStats.spd) >= 190) score += 1;
+  score += Math.round(getUsageWeight(format, species.name) * 6);
 
   return score;
 }
@@ -367,6 +369,7 @@ function evaluateThreatPressure(
   const threatSpeed = threat.baseStats.spe;
   const threatIsPhysical = threat.baseStats.atk >= threat.baseStats.spa;
   const threatHasPowerAbility = hasPowerAbility(threat.abilities, dex);
+  const usagePercent = getSpeciesUsage(team.format, threat.name)?.usage ?? 0;
 
   let hasResist = false;
   let hasFastCheck = false;
@@ -405,7 +408,11 @@ function evaluateThreatPressure(
   }
 
   const answerCount = [hasResist, hasFastCheck, hasBulkyCheck, hasOffensiveAnswer].filter(Boolean).length;
-  const pressure = answerCount >= 3 ? 'low' : answerCount >= 2 ? 'moderate' : 'high';
+  let pressure: ThreatPressureSummary['pressure'] = answerCount >= 3 ? 'low' : answerCount >= 2 ? 'moderate' : 'high';
+
+  if (usagePercent >= 12 && pressure === 'moderate') {
+    pressure = 'high';
+  }
 
   const reasons: string[] = [];
   if (!hasResist) reasons.push('No clear resistance or immunity to likely STAB pressure.');
@@ -417,6 +424,7 @@ function evaluateThreatPressure(
     species: threat.name,
     pressure,
     reasons,
+    usagePercent,
   };
 }
 
@@ -481,6 +489,7 @@ export function analyzeBssPlan(
     .map((species) => species.name);
 
   const threatCandidates = Array.from(new Set([
+    ...getTopUsageThreatNames(team.format, 30),
     ...defaultBssMeta.topThreats.map((threat) => threat.species),
     ...poolThreatNames,
   ]));
@@ -489,24 +498,26 @@ export function analyzeBssPlan(
     .map((species) => evaluateThreatPressure(species, team, dex, speed.hasSpeedControl))
     .filter((entry): entry is ThreatPressureSummary => Boolean(entry));
 
+  const totalThreatWeight = threatSummaries.reduce((sum, threat) => sum + Math.max(1, threat.usagePercent ?? 1), 0);
   const coverageScore = Math.round(
     threatSummaries.reduce((sum, threat) => {
-      if (threat.pressure === 'low') return sum + 1;
-      if (threat.pressure === 'moderate') return sum + 0.5;
+      const weight = Math.max(1, threat.usagePercent ?? 1);
+      if (threat.pressure === 'low') return sum + weight;
+      if (threat.pressure === 'moderate') return sum + weight * 0.5;
       return sum;
-    }, 0) / Math.max(1, threatSummaries.length) * 100,
+    }, 0) / Math.max(1, totalThreatWeight) * 100,
   );
 
   const topPressureThreats = threatSummaries
     .filter((threat) => threat.pressure !== 'low')
     .sort((left, right) => {
       const rank = { high: 0, moderate: 1, low: 2 } as const;
-      return rank[left.pressure] - rank[right.pressure] || left.species.localeCompare(right.species);
+      return rank[left.pressure] - rank[right.pressure] || (right.usagePercent ?? 0) - (left.usagePercent ?? 0) || left.species.localeCompare(right.species);
     })
     .slice(0, 5);
 
   const notes: string[] = [
-    `Threat scoring includes ${legalPool.length} legal species from the active format, even when exact sets are unknown.`,
+    `Threat scoring includes ${legalPool.length} legal species from the active format and uses external usage analytics when available.`,
     'Ability-based immunities and Mega-transformed abilities are included in matchup scoring.',
     `Active mechanics: ${[
       mechanics.tera ? 'Tera' : null,
