@@ -1,4 +1,4 @@
-import type { AnalysisReport, SpeciesDexPort, Team, ValidationPort } from '@pokemon/domain';
+import type { AnalysisReport, SimulationPort, SpeciesDexPort, Team, ValidationPort } from '@pokemon/domain';
 import { preloadUsageAnalytics } from '@pokemon/storage';
 
 import { analyzeBssPlan } from '../analysis/bss.js';
@@ -14,6 +14,7 @@ import { buildPatchSuggestions } from '../suggest/patch.js';
 export interface AnalyzeTeamDeps {
   dex: SpeciesDexPort;
   validator: ValidationPort;
+  simulator?: SimulationPort;
 }
 
 function getRoleHintForMember(member: Team['members'][number], dex: SpeciesDexPort, format: string): PreviewRoleHint {

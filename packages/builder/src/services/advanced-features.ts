@@ -191,6 +191,86 @@ function getUsageWeightForCandidate(format: string, species: NonNullable<ReturnT
   return direct;
 }
 
+function uniqueStrings(values: string[]): string[] {
+  return Array.from(new Set(values.filter(Boolean)));
+}
+
+function buildThreatSimulationTeam(format: string, dex: SpeciesDexPort, validator: ValidationPort): Team | null {
+  const members = getTopUsageThreatNames(format, 8)
+    .map((speciesName) => getCompetitiveSet(speciesName, format, dex, validator, {
+      roleHint: getBuildRoleHint(speciesName, dex),
+    }))
+    .filter((set): set is PokemonSet => Boolean(set))
+    .slice(0, 3);
+
+  if (members.length === 0) return null;
+
+  return {
+    format,
+    source: 'generated',
+    members,
+  };
+}
+
+async function rescoreTopCandidatesWithSimulation(
+  candidates: RankedBuildCandidate[],
+  seedTeam: Team,
+  constraints: BuildConstraints,
+  deps: AnalyzeTeamDeps,
+): Promise<RankedBuildCandidate[]> {
+  if (!deps.simulator) return candidates;
+
+  const probeOpponent = buildThreatSimulationTeam(constraints.format, deps.dex, deps.validator);
+  if (!probeOpponent) return candidates;
+
+  const rescored = await Promise.all(candidates.slice(0, Math.min(24, candidates.length)).map(async (candidate) => {
+    const candidateSet = getCompetitiveSet(candidate.species, constraints.format, deps.dex, deps.validator, {
+      roleHint: getBuildRoleHint(candidate.species, deps.dex, constraints.style),
+      style: constraints.style,
+    }) ?? buildAnchorSeedSet(candidate.species, constraints.format, deps.dex, deps.validator, getBuildRoleHint(candidate.species, deps.dex, constraints.style));
+
+    if (!candidateSet) return candidate;
+
+    const simTeam: Team = {
+      format: constraints.format,
+      source: 'generated',
+      members: [...seedTeam.members.slice(0, 2), candidateSet]
+        .filter((member, index, array) => array.findIndex((entry) => toId(entry.species) === toId(member.species)) === index)
+        .slice(0, 3),
+    };
+
+    const summary = await deps.simulator?.simulateMatchup({
+      format: constraints.format,
+      team: simTeam,
+      opponent: probeOpponent,
+      iterations: 10,
+    });
+
+    if (!summary) return candidate;
+
+    let score = candidate.score + Math.round((summary.winRate - 0.5) * 28);
+    const reasons = [...candidate.reasons];
+
+    if (summary.winRate >= 0.62) {
+      reasons.unshift(`tests well in Showdown-backed sims into current live pressure (${Math.round(summary.winRate * 100)}%)`);
+    } else if (summary.winRate <= 0.42) {
+      score -= 4;
+      reasons.push('still looks shaky in simulation against the current threat cluster');
+    } else {
+      reasons.push('simulation looks playable but matchup-dependent into the live threat core');
+    }
+
+    return {
+      ...candidate,
+      score,
+      reasons: uniqueStrings(reasons).slice(0, 3),
+    } satisfies RankedBuildCandidate;
+  }));
+
+  return [...rescored, ...candidates.slice(Math.min(24, candidates.length))]
+    .sort((left, right) => right.score - left.score || left.species.localeCompare(right.species));
+}
+
 function getBuildRoleHint(speciesName: string, dex: SpeciesDexPort, style?: BuildConstraints['style']): PreviewRoleHint {
   const species = dex.getSpecies(speciesName);
   if (!species) return 'default';
@@ -717,6 +797,27 @@ export async function planBringFromPreview(team: Team, opponent: Team | null, de
     return `Keep ${name} healthy for the midgame pivot war.`;
   });
 
+  const reasons = [
+    `Lead choice favors immediate pressure and positioning into ${opponentLikelyLeads[0] ?? 'their most likely opener'}.`,
+    'Bring choices were weighted by coverage, speed control, resilience, and current live usage trends.',
+  ];
+
+  if (deps.simulator) {
+    const simSummary = await deps.simulator.simulateMatchup({
+      format: team.format,
+      team,
+      opponent,
+      iterations: 12,
+    });
+
+    reasons.unshift(`Showdown-backed sim projects roughly ${Math.round(simSummary.winRate * 100)}% into the revealed preview.`);
+    damageNotes.unshift(...simSummary.notes.slice(0, 2));
+
+    if (simSummary.winRate <= 0.45) {
+      speedNotes.push('Simulation says the opening trades are fragile, so preserve speed control and avoid passive sacks.');
+    }
+  }
+
   return {
     recommendedLead,
     recommendedBring,
@@ -724,13 +825,10 @@ export async function planBringFromPreview(team: Team, opponent: Team | null, de
     opponentLikelyLeads,
     opponentBacklinePatterns,
     pace: getPace(team, opponent, deps.dex, team.format),
-    speedNotes,
-    damageNotes,
-    winConditions,
-    reasons: [
-      `Lead choice favors immediate pressure and positioning into ${opponentLikelyLeads[0] ?? 'their most likely opener'}.`,
-      'Bring choices were weighted by coverage, speed control, resilience, and current live usage trends.',
-    ],
+    speedNotes: uniqueStrings(speedNotes),
+    damageNotes: uniqueStrings(damageNotes).slice(0, 6),
+    winConditions: uniqueStrings(winConditions).slice(0, 4),
+    reasons: uniqueStrings(reasons),
   };
 }
 
@@ -1034,7 +1132,7 @@ export async function buildWithConstraints(constraints: BuildConstraints, deps: 
   const maxRecommendedMegas = Math.max(0, 2 - megaAnchors);
   const maxRecommendedHazards = Math.max(0, 1 - hazardAnchors);
 
-  const rankedCandidates = available
+  let rankedCandidates: RankedBuildCandidate[] = available
     .filter((species) => !existing.has(toId(species.name)))
     .filter((species) => !avoid.has(toId(species.name)))
     .filter((species) => constraints.allowRestricted ? true : species.bst < 671)
@@ -1146,6 +1244,8 @@ export async function buildWithConstraints(constraints: BuildConstraints, deps: 
     })
     .sort((left, right) => right.score - left.score || left.species.localeCompare(right.species));
 
+  rankedCandidates = await rescoreTopCandidatesWithSimulation(rankedCandidates, seedTeam, constraints, deps);
+
   const recommendations = selectDiverseRecommendations(
     rankedCandidates,
     Math.max(1, 6 - seedTeam.members.length),
@@ -1167,10 +1267,11 @@ export async function buildWithConstraints(constraints: BuildConstraints, deps: 
             'The BSS teambuilding guide is now reflected in scoring: bring-3 shells, safe leads or pivots, speed control or priority, and matchup patching matter more than generic hazards or same-type stacking.',
             'The builder also avoids stuffing the roster with too many Mega options; at most two Mega candidates are kept, and they still need real synergy with the rest of the shell.',
             'It also avoids overstacking hazard setters, so field pressure does not crowd out better bring-3 partners.',
+            deps.simulator ? 'Top shortlist options were also rechecked with Showdown-backed matchup sims against the current live threat cluster.' : undefined,
             `Current live pressure points include ${(report.threats.topPressureThreats ?? []).slice(0, 3).map((threat) => threat.species).join(', ') || 'the usual top threats'}.`,
           ]
         : []),
       constraints.allowRestricted ? 'Restricted-level options were left available.' : 'Very high-BST restricted options were filtered out by default.',
-    ],
+    ].filter((note): note is string => Boolean(note)),
   };
 }

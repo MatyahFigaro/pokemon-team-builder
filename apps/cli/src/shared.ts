@@ -9,6 +9,63 @@ import { createShowdownPorts } from '@pokemon/showdown-adapter';
 
 const execFileAsync = promisify(execFile);
 
+interface CoachingContext {
+  action: 'build' | 'analyze' | 'simulate';
+  format?: string;
+  style?: string;
+  anchors?: string[];
+  missingRoles?: string[];
+  issues?: string[];
+  notes?: string[];
+  recommendations?: Array<{
+    species?: string;
+    title?: string;
+    rationale?: string;
+    reasons?: string[];
+  }>;
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return Array.from(new Set(values.filter(Boolean)));
+}
+
+function buildCoachingNotes(context: CoachingContext): string[] {
+  const notes: string[] = [];
+  const leadRecommendation = context.recommendations?.[0];
+
+  if (context.action === 'build') {
+    if (leadRecommendation?.species) {
+      notes.push(`${leadRecommendation.species} is the cleanest next add because it patches the shell without warping your bring-3 plan.`);
+    }
+
+    if ((context.missingRoles?.length ?? 0) > 0) {
+      notes.push(`Keep the next slots focused on ${context.missingRoles?.slice(0, 2).join(' and ')} instead of duplicating overlap.`);
+    }
+  }
+
+  if (context.action === 'analyze' && (context.issues?.length ?? 0) > 0) {
+    notes.push(`The biggest structural pressure point right now is ${context.issues?.[0]?.toLowerCase() ?? 'the current matchup spread'}.`);
+  }
+
+  if (context.action === 'simulate') {
+    notes.push('Use the sim notes to choose a low-risk lead and preserve your speed control for the midgame.');
+  }
+
+  if ((context.notes ?? []).some((note) => note.toLowerCase().includes('mega'))) {
+    notes.push('Treat Mega slots as matchup tools, not automatic brings every game.');
+  }
+
+  if ((context.notes ?? []).some((note) => note.toLowerCase().includes('hazard'))) {
+    notes.push('Avoid spending multiple team slots on passive hazard overlap unless the shell is built to exploit it.');
+  }
+
+  if ((context.notes ?? []).some((note) => note.toLowerCase().includes('simulation'))) {
+    notes.push('Lean on the sim-backed options first when two candidates look close on paper.');
+  }
+
+  return uniqueStrings(notes).slice(0, 3);
+}
+
 const CLIPBOARD_COMMANDS: Array<{ command: string; args: string[] }> = [
   { command: 'wl-paste', args: ['--no-newline'] },
   { command: 'xclip', args: ['-selection', 'clipboard', '-o'] },
@@ -103,6 +160,17 @@ export function formatSuggestions(suggestions: Suggestion[], explain = true): st
 }
 
 export function formatAnalysisReport(report: AnalysisReport, explain = false): string {
+  const coachNotes = buildCoachingNotes({
+    action: 'analyze',
+    format: report.format,
+    issues: report.issues.map((issue) => issue.summary),
+    notes: report.battlePlan.notes,
+    recommendations: report.suggestions.map((suggestion) => ({
+      title: suggestion.title,
+      rationale: suggestion.rationale,
+    })),
+  });
+
   const topWeaknesses = report.weaknesses
     .filter((entry) => entry.weakCount >= 2)
     .slice(0, 3)
@@ -159,6 +227,7 @@ export function formatAnalysisReport(report: AnalysisReport, explain = false): s
     '',
     'Suggestions',
     formatSuggestions(report.suggestions, true),
+    ...(coachNotes.length ? ['', 'Coach notes', ...coachNotes.map((note: string) => `- ${note}`)] : []),
     ...(explain && report.battlePlan.notes.length
       ? ['', 'Explain', ...report.battlePlan.notes.map((note) => `- ${note}`)]
       : []),
@@ -166,6 +235,11 @@ export function formatAnalysisReport(report: AnalysisReport, explain = false): s
 }
 
 export function formatBringPlan(plan: PreviewMatchupPlan): string {
+  const coachNotes = buildCoachingNotes({
+    action: 'simulate',
+    notes: [...plan.reasons, ...plan.speedNotes, ...plan.winConditions],
+  });
+
   return [
     `Recommended lead: ${plan.recommendedLead}`,
     `Best three to bring: ${plan.recommendedBring.join(', ') || 'None'}`,
@@ -185,6 +259,7 @@ export function formatBringPlan(plan: PreviewMatchupPlan): string {
     '',
     'Why this line',
     ...(plan.reasons.length ? plan.reasons.map((note) => `- ${note}`) : ['- None']),
+    ...(coachNotes.length ? ['', 'Coach notes', ...coachNotes.map((note: string) => `- ${note}`)] : []),
   ].join('\n');
 }
 
@@ -225,6 +300,19 @@ export function formatMetaScouting(report: MetaScoutingReport): string {
 }
 
 export function formatConstrainedBuild(report: ConstrainedBuildReport): string {
+  const coachNotes = buildCoachingNotes({
+    action: 'build',
+    format: report.format,
+    style: report.style,
+    anchors: report.anchors,
+    missingRoles: report.missingRoles,
+    notes: report.notes,
+    recommendations: report.recommendations.map((entry) => ({
+      species: entry.species,
+      reasons: entry.reasons,
+    })),
+  });
+
   return [
     `Format: ${report.format}`,
     `Style: ${report.style}`,
@@ -238,6 +326,7 @@ export function formatConstrainedBuild(report: ConstrainedBuildReport): string {
     '',
     'Notes',
     ...(report.notes.length ? report.notes.map((note) => `- ${note}`) : ['- None']),
+    ...(coachNotes.length ? ['', 'Coach notes', ...coachNotes.map((note: string) => `- ${note}`)] : []),
   ].join('\n');
 }
 
