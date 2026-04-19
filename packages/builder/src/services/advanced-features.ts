@@ -77,16 +77,16 @@ export interface ConstrainedBuildReport {
   notes: string[];
 }
 
-function isPromiseLike<T>(value: T | Promise<T>): value is Promise<T> {
-  return typeof (value as Promise<T> | undefined)?.then === 'function';
-}
-
 function normalize(value: string | undefined): string {
   return (value ?? '').trim().toLowerCase();
 }
 
 function toId(value: string | undefined): string {
   return normalize(value).replace(/[^a-z0-9]/g, '');
+}
+
+function isPromiseLike<T>(value: T | Promise<T>): value is Promise<T> {
+  return typeof (value as Promise<T> | undefined)?.then === 'function';
 }
 
 function memberName(member: Team['members'][number]): string {
