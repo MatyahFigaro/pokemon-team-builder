@@ -169,6 +169,9 @@ importers:
       '@pokemon/domain':
         specifier: workspace:*
         version: link:../domain
+      pokemon-showdown:
+        specifier: github:smogon/pokemon-showdown#master
+        version: https://codeload.github.com/smogon/pokemon-showdown/tar.gz/91672eacea0f9ddfb4e76ec4006e98ab0c0b8212(@types/node@22.15.3)
     devDependencies:
       '@repo/typescript-config':
         specifier: workspace:*

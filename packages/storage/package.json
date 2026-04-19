@@ -16,7 +16,8 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
-    "@pokemon/domain": "workspace:*"
+    "@pokemon/domain": "workspace:*",
+    "pokemon-showdown": "github:smogon/pokemon-showdown#master"
   },
   "devDependencies": {
     "@repo/typescript-config": "workspace:*",

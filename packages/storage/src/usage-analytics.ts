@@ -1,3 +1,9 @@
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+const showdown = require('pokemon-showdown') as any;
+const { Dex } = showdown;
+
 export interface UsageChoiceRecord {
   name: string;
   usage: number;
@@ -42,6 +48,15 @@ const STATS_BASE_URL = process.env.POKEMON_STATS_BASE_URL ?? 'https://www.smogon
 const CHAMPIONS_STATS_BASE_URL = process.env.POKEMON_CHAMPIONS_STATS_BASE_URL ?? 'https://pokemon-champions-stats.vercel.app';
 const usageCache = new Map<string, UsageAnalyticsSnapshot | null>();
 const pendingCache = new Map<string, Promise<UsageAnalyticsSnapshot | null>>();
+const legalSpeciesIdCache = new Map<string, Set<string> | null>();
+
+const FORMAT_ANALYTICS_FALLBACKS: Record<string, string[]> = {
+  gen9championsou: ['gen9ou'],
+  gen9championsbssregma: ['gen9bssregg'],
+  gen9championsvgc2026regma: ['gen9vgc2025regg'],
+  gen9championsvgc2026regmabo3: ['gen9vgc2025reggbo3', 'gen9vgc2025regg'],
+  gen9championscustomgame: ['gen9customgame'],
+};
 
 function normalize(value: string | undefined): string {
   return (value ?? '').trim().toLowerCase();
@@ -215,6 +230,99 @@ async function fetchChampionsSnapshot(format: string): Promise<UsageAnalyticsSna
   } satisfies UsageAnalyticsSnapshot;
 }
 
+function resolveFormatForAnalytics(format: string): string | null {
+  const direct = Dex.formats.get(format);
+  if (direct.exists && direct.effectType === 'Format') {
+    return direct.id;
+  }
+
+  const fallbackCandidates = FORMAT_ANALYTICS_FALLBACKS[toId(format)] ?? [];
+  for (const candidate of fallbackCandidates) {
+    const resolved = Dex.formats.get(candidate);
+    if (resolved.exists && resolved.effectType === 'Format') {
+      return resolved.id;
+    }
+  }
+
+  return null;
+}
+
+function getProbeMoves(species: any): string[] {
+  const preferredMoves = ['protect', 'earthquake', 'thunderbolt', 'shadowball', 'moonblast', 'closecombat', 'tackle'];
+  const learnsetData = Dex.species.getLearnsetData(species.id) as { learnset?: Record<string, unknown> } | null;
+  const learnset = Object.keys(learnsetData?.learnset ?? {});
+  const chosenMoveId = preferredMoves.find((moveId) => learnset.includes(moveId)) ?? learnset[0];
+
+  if (!chosenMoveId) return [];
+
+  const move = Dex.moves.get(chosenMoveId);
+  return [move.exists ? move.name : chosenMoveId];
+}
+
+function getLegalSpeciesIds(format: string): Set<string> | null {
+  const key = normalize(format);
+  if (legalSpeciesIdCache.has(key)) return legalSpeciesIdCache.get(key) ?? null;
+
+  try {
+    const resolvedFormat = resolveFormatForAnalytics(format);
+    if (!resolvedFormat) {
+      legalSpeciesIdCache.set(key, null);
+      return null;
+    }
+
+    const formatInfo = Dex.formats.get(resolvedFormat);
+    const dex = Dex.forFormat(formatInfo);
+    const validator = showdown.TeamValidator.get(resolvedFormat);
+    const legalIds = new Set<string>();
+
+    for (const species of dex.species.all() as any[]) {
+      if (!species?.exists || !species.name) continue;
+
+      const ability = (Object.values(species.abilities ?? {}) as string[]).find(Boolean);
+      const moves = getProbeMoves(species);
+      if (!ability || moves.length === 0) continue;
+
+      const problems = validator.validateSet({
+        species: species.name,
+        ability,
+        moves,
+        level: 50,
+        evs: { hp: 1 },
+      }, {}) ?? [];
+
+      if (problems.length > 0) continue;
+
+      legalIds.add(toId(species.id));
+      legalIds.add(toId(species.name));
+    }
+
+    const curatedIds: Set<string> | null = legalIds.size > 0 ? legalIds : null;
+    legalSpeciesIdCache.set(key, curatedIds);
+    return curatedIds;
+  } catch {
+    legalSpeciesIdCache.set(key, null);
+    return null;
+  }
+}
+
+function curateSnapshotForFormat(format: string, snapshot: UsageAnalyticsSnapshot | null): UsageAnalyticsSnapshot | null {
+  if (!snapshot) return null;
+
+  const legalIds = getLegalSpeciesIds(format);
+  if (!legalIds) return snapshot;
+
+  const species = snapshot.species
+    .filter((entry) => legalIds.has(toId(entry.species)))
+    .map((entry) => ({
+      ...entry,
+      teammates: entry.teammates?.filter((candidate) => legalIds.has(toId(candidate.name))),
+    }));
+
+  return species.length > 0
+    ? { ...snapshot, species }
+    : snapshot;
+}
+
 function mergeUsageSnapshots(primary: UsageAnalyticsSnapshot, fallback: UsageAnalyticsSnapshot | null): UsageAnalyticsSnapshot {
   if (!fallback) return primary;
 
@@ -341,9 +449,12 @@ export async function preloadUsageAnalytics(format: string): Promise<UsageAnalyt
   const pending = (async () => {
     const resolved = await resolveStatsUrl(format);
     const payload = resolved ? await fetchJson<SmogonChaosResponse>(resolved.url) : null;
-    const smogonSnapshot = resolved && payload
-      ? buildSnapshotFromChaos(format, resolved.url, payload, resolved.resolvedFormat, resolved.exactMatch)
-      : null;
+    const smogonSnapshot = curateSnapshotForFormat(
+      format,
+      resolved && payload
+        ? buildSnapshotFromChaos(format, resolved.url, payload, resolved.resolvedFormat, resolved.exactMatch)
+        : null,
+    );
 
     if (smogonSnapshot?.exactMatch) {
       usageCache.set(key, smogonSnapshot);
@@ -351,7 +462,7 @@ export async function preloadUsageAnalytics(format: string): Promise<UsageAnalyt
       return smogonSnapshot;
     }
 
-    const championsSnapshot = await fetchChampionsSnapshot(format);
+    const championsSnapshot = curateSnapshotForFormat(format, await fetchChampionsSnapshot(format));
     const snapshot = championsSnapshot
       ? mergeUsageSnapshots(championsSnapshot, smogonSnapshot)
       : smogonSnapshot;
