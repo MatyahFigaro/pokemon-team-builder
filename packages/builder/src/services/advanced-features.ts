@@ -223,7 +223,8 @@ async function rescoreTopCandidatesWithSimulation(
   const probeOpponent = buildThreatSimulationTeam(constraints.format, deps.dex, deps.validator);
   if (!probeOpponent) return candidates;
 
-  const rescored = await Promise.all(candidates.slice(0, Math.min(24, candidates.length)).map(async (candidate) => {
+  const simulationWindow = Math.min(8, candidates.length);
+  const rescored = await Promise.all(candidates.slice(0, simulationWindow).map(async (candidate) => {
     const candidateSet = getCompetitiveSet(candidate.species, constraints.format, deps.dex, deps.validator, {
       roleHint: getBuildRoleHint(candidate.species, deps.dex, constraints.style),
       style: constraints.style,
@@ -243,7 +244,7 @@ async function rescoreTopCandidatesWithSimulation(
       format: constraints.format,
       team: simTeam,
       opponent: probeOpponent,
-      iterations: 10,
+      iterations: 3,
     });
 
     if (!summary) return candidate;
@@ -267,7 +268,7 @@ async function rescoreTopCandidatesWithSimulation(
     } satisfies RankedBuildCandidate;
   }));
 
-  return [...rescored, ...candidates.slice(Math.min(24, candidates.length))]
+  return [...rescored, ...candidates.slice(simulationWindow)]
     .sort((left, right) => right.score - left.score || left.species.localeCompare(right.species));
 }
 
