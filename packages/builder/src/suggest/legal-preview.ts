@@ -1,5 +1,5 @@
 import type { FormatId, MoveInfo, PokemonSet, SpeciesDexPort, StatsTable, ValidationPort, ValidationSetResult } from '@pokemon/domain';
-import { getSpeciesUsage, getTopUsageNames } from '@pokemon/storage';
+import { getSpeciesUsage, getTopUsageNames, listManualSets } from '@pokemon/storage';
 
 export type PreviewRoleHint = 'default' | 'hazard-control' | 'disruption' | 'pivot' | 'speed' | 'bulky' | 'offense';
 
@@ -347,6 +347,41 @@ function isPromiseLike<T>(value: T | Promise<T>): value is Promise<T> {
   return typeof (value as Promise<T> | undefined)?.then === 'function';
 }
 
+function getManualSetCandidates(speciesName: string, format: FormatId, dex: SpeciesDexPort): PokemonSet[] {
+  const requested = dex.getSpecies(speciesName);
+  const requestedRequiredItem = requested?.requiredItem ? toId(requested.requiredItem) : '';
+  const requestedSpeciesId = toId(speciesName);
+
+  return listManualSets({ format })
+    .map((record) => record.set)
+    .filter((set) => {
+      const storedSpeciesId = toId(set.species);
+      const storedItemId = toId(set.item);
+
+      if (storedSpeciesId === requestedSpeciesId) return true;
+      if (requestedRequiredItem && storedItemId === requestedRequiredItem) return true;
+
+      const storedSpecies = dex.getSpecies(set.species);
+      const storedRequiredItem = storedSpecies?.requiredItem ? toId(storedSpecies.requiredItem) : '';
+      return Boolean(storedRequiredItem && requestedRequiredItem && storedRequiredItem === requestedRequiredItem);
+    });
+}
+
+function getValidatedManualSet(
+  speciesName: string,
+  format: FormatId,
+  dex: SpeciesDexPort,
+  validator: ValidationPort,
+): PokemonSet | null {
+  for (const candidate of getManualSetCandidates(speciesName, format, dex)) {
+    const result = validator.validateSet(candidate, format);
+    if (isPromiseLike<ValidationSetResult>(result)) continue;
+    if (result.valid) return result.normalizedSet ?? candidate;
+  }
+
+  return null;
+}
+
 function passesPreviewQualityGate(speciesName: string, moves: string[], dex: SpeciesDexPort, format?: FormatId): boolean {
   const species = dex.getSpecies(speciesName);
   if (!species) return false;
@@ -407,6 +442,9 @@ export function getCompetitiveSet(
 ): PokemonSet | null {
   const species = dex.getSpecies(speciesName);
   if (!species) return null;
+
+  const manualSet = getValidatedManualSet(species.name, format, dex, validator);
+  if (manualSet) return manualSet;
 
   const moves = buildMoves(species.name, format, dex, options);
   if (moves.length === 0 || !passesPreviewQualityGate(species.name, moves, dex, format)) return null;

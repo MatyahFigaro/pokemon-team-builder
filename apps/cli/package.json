@@ -16,6 +16,7 @@
     "@pokemon/builder": "workspace:*",
     "@pokemon/domain": "workspace:*",
     "@pokemon/showdown-adapter": "workspace:*",
+    "@pokemon/storage": "workspace:*",
     "commander": "^14.0.1"
   },
   "devDependencies": {

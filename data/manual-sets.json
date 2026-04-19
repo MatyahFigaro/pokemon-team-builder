@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "sets": [
+    {
+      "id": "gen9championsbssregma::dragonite::lumberry::dragondance-earthquake-extremespeed-firepunch::default",
+      "format": "gen9championsbssregma",
+      "species": "Dragonite",
+      "source": "file:/tmp/manual-dnite.txt",
+      "createdAt": "2026-04-19T16:39:33.548Z",
+      "updatedAt": "2026-04-19T16:41:23.981Z",
+      "set": {
+        "species": "Dragonite",
+        "item": "Lum Berry",
+        "ability": "multiscale",
+        "nature": "adamant",
+        "level": 50,
+        "teraType": "Normal",
+        "moves": [
+          "Dragon Dance",
+          "Extreme Speed",
+          "Earthquake",
+          "Fire Punch"
+        ],
+        "evs": {
+          "atk": 32,
+          "spd": 2,
+          "spe": 32
+        },
+        "ivs": {
+          "hp": 31,
+          "atk": 31,
+          "def": 31,
+          "spa": 31,
+          "spd": 31,
+          "spe": 31
+        }
+      }
+    }
+  ]
+}
