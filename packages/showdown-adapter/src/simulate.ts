@@ -1,11 +1,39 @@
+import { createRequire } from 'node:module';
+
 import type { MatchupRequest, MatchupSummary, PokemonSet, SimulationPort, Team } from '@pokemon/domain';
 
 import { ShowdownDexAdapter } from './dex.js';
+import { toShowdownTeam } from './mappers.js';
+
+const require = createRequire(import.meta.url);
+const showdown = require('pokemon-showdown') as any;
+const { BattleStream, getPlayerStreams, Teams } = showdown;
 
 const PRIORITY_MOVES = new Set(['extremespeed', 'suckerpunch', 'aquajet', 'iceshard', 'machpunch', 'bulletpunch', 'shadowsneak', 'vacuumwave']);
 const RECOVERY_MOVES = new Set(['recover', 'roost', 'slackoff', 'softboiled', 'moonlight', 'morningsun', 'synthesis', 'rest']);
 const SETUP_MOVES = new Set(['swordsdance', 'dragondance', 'nastyplot', 'calmmind', 'bulkup', 'agility', 'quiverdance', 'trailblaze']);
 const PIVOT_MOVES = new Set(['uturn', 'voltswitch', 'partingshot', 'flipturn', 'teleport', 'chillyreception']);
+
+interface PlayerChoiceRequest {
+  wait?: boolean;
+  forceSwitch?: boolean[];
+  teamPreview?: boolean;
+  active?: Array<{
+    moves?: Array<{ move: string; disabled?: boolean; target?: string }>;
+    trapped?: boolean;
+    canMegaEvo?: boolean;
+    canTerastallize?: boolean;
+  }>;
+  side?: {
+    pokemon: Array<{
+      details?: string;
+      condition: string;
+      active?: boolean;
+      reviving?: boolean;
+      commanding?: boolean;
+    }>;
+  };
+}
 
 function normalize(value: string | undefined): string {
   return (value ?? '').trim().toLowerCase();
@@ -13,6 +41,27 @@ function normalize(value: string | undefined): string {
 
 function toId(value: string | undefined): string {
   return normalize(value).replace(/[^a-z0-9]/g, '');
+}
+
+function canonicalSpeciesId(value: string | undefined): string {
+  return toId((value ?? '').replace(/-mega(?:-[xy])?$/i, '').replace(/-primal$/i, ''));
+}
+
+function uniqueStrings(values: Array<string | null | undefined>): string[] {
+  return Array.from(new Set(values.filter((value): value is string => Boolean(value))));
+}
+
+function splitFirst(value: string, delimiter: string): [string, string] {
+  const index = value.indexOf(delimiter);
+  return index >= 0 ? [value.slice(0, index), value.slice(index + delimiter.length)] : [value, ''];
+}
+
+function speciesFromDetails(details?: string): string {
+  return (details ?? '').split(',')[0]?.trim() ?? '';
+}
+
+function packTeam(team: Team): string {
+  return Teams.pack(toShowdownTeam(team) as never);
 }
 
 function hasTaggedMove(set: Pick<PokemonSet, 'moves'>, moveIds: Set<string>): boolean {
@@ -57,6 +106,53 @@ function getBestMoveData(
     .sort((left, right) => right.score - left.score);
 
   return ranked[0] ?? null;
+}
+
+function scoreSpecificMove(
+  attackerSet: PokemonSet,
+  moveName: string,
+  defenderSet: PokemonSet,
+  dex: ShowdownDexAdapter,
+  format: string,
+): number {
+  const attacker = dex.getBattleProfile(attackerSet, format);
+  const defender = dex.getBattleProfile(defenderSet, format);
+  const move = dex.getMove(moveName);
+  if (!attacker || !defender || !move) return 0;
+
+  const moveId = toId(move.name);
+  if (move.category === 'Status' || (move.basePower ?? 0) <= 0) {
+    let score = 8;
+    if (SETUP_MOVES.has(moveId)) score += 18;
+    if (PIVOT_MOVES.has(moveId)) score += 12;
+    if (RECOVERY_MOVES.has(moveId)) score += 10;
+    if (move.status === 'par') score += 8;
+    if (moveId === 'protect') score += 4;
+    return score;
+  }
+
+  const offense = move.category === 'Special' ? attacker.baseStats.spa : attacker.baseStats.atk;
+  const defense = move.category === 'Special' ? defender.baseStats.spd : defender.baseStats.def;
+  const stab = attacker.types.includes(move.type) ? 1.5 : 1;
+  const effectiveness = dex.getTypeEffectiveness(move.type, defender.types);
+  const priority = move.priority > 0 ? 1 + (move.priority * 0.2) : 1;
+
+  return (move.basePower ?? 0) * stab * Math.max(0.25, effectiveness) * priority * (offense / Math.max(1, defense));
+}
+
+function scoreMoveIntoTeam(
+  attackerSet: PokemonSet,
+  moveName: string,
+  opponent: Team,
+  dex: ShowdownDexAdapter,
+  format: string,
+): number {
+  const scores = opponent.members.map((target) => scoreSpecificMove(attackerSet, moveName, target, dex, format));
+  if (!scores.length) return 0;
+
+  const best = Math.max(...scores);
+  const average = scores.reduce((sum, value) => sum + value, 0) / scores.length;
+  return best * 0.65 + average * 0.35;
 }
 
 function scoreSetIntoTarget(
@@ -140,11 +236,285 @@ function scoreBringGroup(
   return total + utility;
 }
 
+class EngineGreedyPlayer {
+  private usedMega = false;
+  private usedTera = false;
+
+  constructor(
+    private readonly stream: any,
+    private readonly team: Team,
+    private readonly opponent: Team,
+    private readonly dex: ShowdownDexAdapter,
+    private readonly format: string,
+  ) {}
+
+  async start(): Promise<void> {
+    for await (const chunk of this.stream) {
+      this.receive(String(chunk));
+    }
+  }
+
+  private receive(chunk: string): void {
+    for (const line of chunk.split('\n')) {
+      this.receiveLine(line);
+    }
+  }
+
+  private receiveLine(line: string): void {
+    if (!line.startsWith('|')) return;
+
+    const [cmd, rest] = splitFirst(line.slice(1), '|');
+    if (cmd === 'request') {
+      this.receiveRequest(JSON.parse(rest) as PlayerChoiceRequest);
+      return;
+    }
+
+    if (cmd === 'error' && !rest.startsWith('[Unavailable choice]')) {
+      throw new Error(rest);
+    }
+  }
+
+  private receiveRequest(request: PlayerChoiceRequest): void {
+    const choice = this.buildChoice(request);
+    if (choice) void this.stream.write(choice);
+  }
+
+  private getSwitchOptions(sidePokemon: NonNullable<PlayerChoiceRequest['side']>['pokemon'], activeIndex: number, chosen: number[]) {
+    return sidePokemon
+      .map((pokemon, index) => ({ pokemon, slot: index + 1, set: this.team.members[index] }))
+      .filter((entry) => Boolean(entry.set))
+      .filter((entry) => !entry.pokemon.active)
+      .filter((entry) => !entry.pokemon.condition.endsWith(' fnt'))
+      .filter((entry) => !chosen.includes(entry.slot))
+      .map((entry) => ({
+        slot: entry.slot,
+        score: this.opponent.members.reduce((sum, target) => sum + scoreSetIntoTarget(entry.set as PokemonSet, target, this.dex, this.format), 0),
+      }))
+      .sort((left, right) => right.score - left.score);
+  }
+
+  private getBestActiveSet(slotIndex: number, sidePokemon: NonNullable<PlayerChoiceRequest['side']>['pokemon']): PokemonSet | null {
+    const bySlot = this.team.members[slotIndex];
+    if (bySlot) return bySlot;
+
+    const details = sidePokemon[slotIndex]?.details;
+    const species = speciesFromDetails(details);
+    return this.team.members.find((member) => canonicalSpeciesId(member.species) === canonicalSpeciesId(species)) ?? null;
+  }
+
+  private buildChoice(request: PlayerChoiceRequest): string | undefined {
+    if (request.wait) return undefined;
+    if (request.teamPreview) return 'default';
+
+    const sidePokemon = request.side?.pokemon ?? [];
+
+    if (request.forceSwitch) {
+      const chosen: number[] = [];
+      const choices = request.forceSwitch.map((mustSwitch, index) => {
+        if (!mustSwitch) return 'pass';
+        const switches = this.getSwitchOptions(sidePokemon, index, chosen);
+        const target = switches[0]?.slot;
+        if (!target) return 'pass';
+        chosen.push(target);
+        return `switch ${target}`;
+      });
+
+      return choices.join(', ');
+    }
+
+    if (!request.active?.length) return undefined;
+
+    const chosen: number[] = [];
+    const choices = request.active.map((activeState, activeIndex) => {
+      const currentPokemon = sidePokemon[activeIndex];
+      if (!currentPokemon || currentPokemon.condition.endsWith(' fnt') || currentPokemon.commanding) return 'pass';
+
+      const currentSet = this.getBestActiveSet(activeIndex, sidePokemon);
+      if (!currentSet) return 'move 1';
+
+      const moveChoices = (activeState.moves ?? [])
+        .map((move, index) => ({
+          slot: index + 1,
+          move: move.move,
+          disabled: move.disabled,
+          target: move.target ?? 'normal',
+          score: scoreMoveIntoTeam(currentSet, move.move, this.opponent, this.dex, this.format),
+        }))
+        .filter((move) => !move.disabled)
+        .sort((left, right) => right.score - left.score);
+
+      const bestMove = moveChoices[0];
+      const switchChoices = activeState.trapped ? [] : this.getSwitchOptions(sidePokemon, activeIndex, chosen);
+      const bestSwitch = switchChoices[0];
+
+      if ((!bestMove || (bestSwitch && bestSwitch.score > bestMove.score + 18)) && bestSwitch) {
+        chosen.push(bestSwitch.slot);
+        return `switch ${bestSwitch.slot}`;
+      }
+
+      if (!bestMove) return 'move 1';
+
+      let choice = `move ${bestMove.slot}`;
+      if (request.active && request.active.length > 1 && ['normal', 'any', 'adjacentFoe'].includes(bestMove.target)) {
+        choice += ' 1';
+      }
+
+      if (activeState.canMegaEvo && !this.usedMega) {
+        this.usedMega = true;
+        choice += ' mega';
+      } else if (activeState.canTerastallize && !this.usedTera && bestMove.score >= 140) {
+        this.usedTera = true;
+        choice += ' terastallize';
+      }
+
+      return choice;
+    });
+
+    return choices.join(', ');
+  }
+}
+
+async function runBattleStreamGame(
+  request: MatchupRequest,
+  dex: ShowdownDexAdapter,
+  iteration: number,
+): Promise<{ winner: 'p1' | 'p2' | 'tie'; turns: number; ourLead?: string; theirLead?: string }> {
+  const streams = getPlayerStreams(new BattleStream());
+  const p1 = new EngineGreedyPlayer(streams.p1, request.team, request.opponent, dex, request.format);
+  const p2 = new EngineGreedyPlayer(streams.p2, request.opponent, request.team, dex, request.format);
+
+  const p1Task = p1.start();
+  const p2Task = p2.start();
+
+  let winner: 'p1' | 'p2' | 'tie' = 'tie';
+  let turns = 0;
+  let ourLead: string | undefined;
+  let theirLead: string | undefined;
+
+  const seed = [iteration + 1, iteration + 2, iteration + 3, iteration + 4];
+  const initMessage = `>start ${JSON.stringify({ formatid: request.format, seed })}\n`
+    + `>player p1 ${JSON.stringify({ name: 'P1', team: packTeam(request.team) })}\n`
+    + `>player p2 ${JSON.stringify({ name: 'P2', team: packTeam(request.opponent) })}`;
+
+  void streams.omniscient.write(initMessage);
+
+  for await (const chunk of streams.omniscient) {
+    for (const line of String(chunk).split('\n')) {
+      if (!ourLead && line.startsWith('|switch|p1a:')) {
+        const segments = line.split('|');
+        ourLead = speciesFromDetails(segments[3]);
+      }
+
+      if (!theirLead && line.startsWith('|switch|p2a:')) {
+        const segments = line.split('|');
+        theirLead = speciesFromDetails(segments[3]);
+      }
+
+      if (line.startsWith('|turn|')) {
+        turns = Number(line.split('|')[2] ?? turns);
+      }
+
+      if (line.startsWith('|win|')) {
+        const victor = line.split('|')[2];
+        winner = victor === 'P1' ? 'p1' : victor === 'P2' ? 'p2' : 'tie';
+        break;
+      }
+
+      if (line.startsWith('|tie|')) {
+        winner = 'tie';
+        break;
+      }
+    }
+
+    if (winner !== 'tie' || String(chunk).includes('|tie|')) break;
+  }
+
+  try {
+    void streams.omniscient.writeEnd();
+  } catch {
+    // The stream may already be closed once the winner is known.
+  }
+
+  await Promise.allSettled([p1Task, p2Task]);
+
+  return { winner, turns, ourLead, theirLead };
+}
+
 export class ShowdownSimulationAdapter implements SimulationPort {
   private readonly dex = new ShowdownDexAdapter();
 
   async simulateMatchup(request: MatchupRequest): Promise<MatchupSummary> {
-    const iterations = Math.max(4, request.iterations || 12);
+    try {
+      return await this.simulateWithBattleStream(request);
+    } catch (error) {
+      return this.simulateHeuristicFallback(request, error);
+    }
+  }
+
+  private async simulateWithBattleStream(request: MatchupRequest): Promise<MatchupSummary> {
+    const iterations = Math.max(1, Math.min(request.iterations || 4, 4));
+
+    if (!request.team.members.length || !request.opponent.members.length) {
+      return {
+        iterations,
+        wins: 0,
+        losses: 0,
+        draws: iterations,
+        winRate: 0.5,
+        notes: ['Simulation needs at least one Pokémon on each side.'],
+      };
+    }
+
+    let wins = 0;
+    let losses = 0;
+    let draws = 0;
+    let totalTurns = 0;
+    const ourLeads: string[] = [];
+    const theirLeads: string[] = [];
+
+    for (let index = 0; index < iterations; index += 1) {
+      const result = await runBattleStreamGame(request, this.dex, index);
+      totalTurns += result.turns;
+      if (result.ourLead) ourLeads.push(result.ourLead);
+      if (result.theirLead) theirLeads.push(result.theirLead);
+
+      if (result.winner === 'p1') wins += 1;
+      else if (result.winner === 'p2') losses += 1;
+      else draws += 1;
+    }
+
+    const spotlight = pickBring(request.team, request.opponent, this.dex, request.format, 1)[0];
+    const mainThreat = pickBring(request.opponent, request.team, this.dex, request.format, 1)[0];
+    const averageTurns = totalTurns / Math.max(1, iterations);
+    const winRate = (wins + (draws * 0.5)) / iterations;
+
+    const notes = uniqueStrings([
+      spotlight ? `${spotlight.species} showed the cleanest engine-backed line from preview.` : null,
+      mainThreat ? `${mainThreat.species} was the opposing slot demanding the most respect in battle.` : null,
+      ourLeads[0] ? `Most stable opener from the sim: ${ourLeads[0]}.` : null,
+      theirLeads[0] ? `Most common opposing lead in sim: ${theirLeads[0]}.` : null,
+      averageTurns <= 6
+        ? 'These battles closed quickly, so tempo and immediate pressure mattered most.'
+        : 'These battles tended to go longer, so preserving pivots and recovery mattered more.',
+      winRate >= 0.6
+        ? 'The projected bring-3 shell looks favorable if you preserve momentum.'
+        : winRate <= 0.45
+          ? 'The projected matchup is fragile and may need tighter positioning or a different bring pattern.'
+          : 'The projected matchup looks close, so sequencing and speed control should decide it.',
+    ]).slice(0, 4);
+
+    return {
+      iterations,
+      wins,
+      losses,
+      draws,
+      winRate,
+      notes,
+    };
+  }
+
+  private async simulateHeuristicFallback(request: MatchupRequest, error?: unknown): Promise<MatchupSummary> {
+    const iterations = Math.max(2, Math.min(request.iterations || 6, 6));
 
     if (!request.team.members.length || !request.opponent.members.length) {
       return {
@@ -165,7 +535,7 @@ export class ShowdownSimulationAdapter implements SimulationPort {
       const ourBring = pickBring(request.team, request.opponent, this.dex, request.format, 3);
       const theirBring = pickBring(request.opponent, request.team, this.dex, request.format, 3);
 
-      const ourScore = scoreBringGroup(ourBring, theirBring, this.dex, request.format) + ((Math.random() - 0.5) * 12);
+      const ourScore = scoreBringGroup(ourBring, theirBring, this.dex, request.format) + ((Math.random() - 0.5) * 8);
       const theirScore = scoreBringGroup(theirBring, ourBring, this.dex, request.format);
 
       if (ourScore > theirScore + 4) wins += 1;
@@ -175,17 +545,19 @@ export class ShowdownSimulationAdapter implements SimulationPort {
 
     const spotlight = pickBring(request.team, request.opponent, this.dex, request.format, 1)[0];
     const mainThreat = pickBring(request.opponent, request.team, this.dex, request.format, 1)[0];
-    const winRate = wins / iterations;
+    const winRate = (wins + (draws * 0.5)) / iterations;
 
-    const notes = [
-      spotlight ? `${spotlight.species} shows the cleanest simulated line from preview.` : null,
-      mainThreat ? `${mainThreat.species} is the opposing slot that demands the most respect.` : null,
+    const notes = uniqueStrings([
+      spotlight ? `${spotlight.species} still shows the cleanest preview line.` : null,
+      mainThreat ? `${mainThreat.species} is still the opposing slot demanding the most respect.` : null,
+      'Engine-backed battle rollout was unavailable here, so the simulator fell back to matchup heuristics.',
+      error instanceof Error ? `Fallback reason: ${error.message}` : null,
       winRate >= 0.6
         ? 'The projected bring-3 shell looks favorable if you preserve momentum.'
         : winRate <= 0.45
           ? 'The projected matchup is fragile and may need tighter positioning or a different bring pattern.'
           : 'The projected matchup looks close, so sequencing and speed control should decide it.',
-    ].filter((value): value is string => Boolean(value));
+    ]).slice(0, 4);
 
     return {
       iterations,
