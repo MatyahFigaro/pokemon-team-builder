@@ -5,6 +5,7 @@ export * from './analysis/synergy.js';
 export * from './analysis/weaknesses.js';
 export * from './scoring/final.js';
 export * from './scoring/structural.js';
+export * from './services/advanced-features.js';
 export * from './services/analyze-team.js';
 export * from './services/suggest-team.js';
 export * from './services/team-build-service.js';

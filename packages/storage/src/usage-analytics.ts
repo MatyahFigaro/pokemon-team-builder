@@ -9,6 +9,7 @@ export interface UsageSpeciesRecord {
   abilities?: UsageChoiceRecord[];
   items?: UsageChoiceRecord[];
   moves?: UsageChoiceRecord[];
+  teraTypes?: UsageChoiceRecord[];
   teammates?: UsageChoiceRecord[];
   tags?: string[];
 }
@@ -25,6 +26,7 @@ interface SmogonChaosEntry {
   Abilities?: Record<string, number>;
   Items?: Record<string, number>;
   Moves?: Record<string, number>;
+  'Tera Types'?: Record<string, number>;
   Teammates?: Record<string, number>;
 }
 
@@ -155,6 +157,7 @@ function buildSnapshotFromChaos(format: string, sourceUrl: string, payload: Smog
       abilities: toChoiceRecords(entry.Abilities),
       items: toChoiceRecords(entry.Items),
       moves: toChoiceRecords(entry.Moves),
+      teraTypes: toChoiceRecords(entry['Tera Types']),
       teammates: toChoiceRecords(entry.Teammates),
     }))
     .filter((entry) => entry.usage > 0)

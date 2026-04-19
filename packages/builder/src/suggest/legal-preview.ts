@@ -373,12 +373,22 @@ function passesPreviewQualityGate(speciesName: string, moves: string[], dex: Spe
   return true;
 }
 
+function chooseTeraType(speciesName: string, format: FormatId, dex: SpeciesDexPort): string | undefined {
+  const species = dex.getSpecies(speciesName);
+  if (!species) return undefined;
+
+  const topTera = getSpeciesUsage(format, speciesName)?.teraTypes?.[0]?.name;
+  if (topTera) return topTera;
+  return species.types[0];
+}
+
 function formatSetPreview(set: PokemonSet, format?: FormatId): string {
   const statLabel = format && isChampionsLikeFormat(format) ? 'Stat Points' : 'EVs';
 
   const lines = [
     set.item ? `${set.species} @ ${set.item}` : set.species,
     set.ability ? `Ability: ${set.ability}` : null,
+    set.teraType ? `Tera Type: ${set.teraType}` : null,
     formatStatsLine(statLabel, set.evs),
     formatStatsLine('IVs', set.ivs),
     set.nature ? `${set.nature} Nature` : null,
@@ -388,13 +398,13 @@ function formatSetPreview(set: PokemonSet, format?: FormatId): string {
   return lines.join(' | ');
 }
 
-export function getCompetitiveSetPreview(
+export function getCompetitiveSet(
   speciesName: string,
   format: FormatId,
   dex: SpeciesDexPort,
   validator: ValidationPort,
   options: PreviewOptions = {},
-): string | null {
+): PokemonSet | null {
   const species = dex.getSpecies(speciesName);
   if (!species) return null;
 
@@ -405,6 +415,7 @@ export function getCompetitiveSetPreview(
   const nature = buildNature(species.name, dex, moves, options, format);
   const evs = convertStatPoints(buildEvs(species.name, dex, moves, options, format), format);
   const ivs = normalizeIvs(buildIvs(species.name, dex, format));
+  const teraType = chooseTeraType(species.name, format, dex);
   const itemOptions = buildItemOptions(species.name, format, dex, moves, options);
 
   for (const item of itemOptions) {
@@ -415,6 +426,7 @@ export function getCompetitiveSetPreview(
       nature,
       moves,
       level: 50,
+      teraType,
       evs,
       ivs,
     };
@@ -425,11 +437,22 @@ export function getCompetitiveSetPreview(
     }
 
     if (result.valid) {
-      return formatSetPreview(result.normalizedSet ?? set, format);
+      return result.normalizedSet ?? set;
     }
   }
 
   return null;
+}
+
+export function getCompetitiveSetPreview(
+  speciesName: string,
+  format: FormatId,
+  dex: SpeciesDexPort,
+  validator: ValidationPort,
+  options: PreviewOptions = {},
+): string | null {
+  const set = getCompetitiveSet(speciesName, format, dex, validator, options);
+  return set ? formatSetPreview(set, format) : null;
 }
 
 export function prioritizePreviewableCandidates(

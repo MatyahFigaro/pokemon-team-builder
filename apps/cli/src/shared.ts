@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 
-import type { AnalysisReport, Suggestion } from '@pokemon/domain';
+import type { AnalysisReport, Suggestion, Team } from '@pokemon/domain';
+import type { ConstrainedBuildReport, MetaScoutingReport, PreviewMatchupPlan, TeamSetOptimizationReport } from '@pokemon/builder';
 import { TeamBuildService } from '@pokemon/builder';
 import { createShowdownPorts } from '@pokemon/showdown-adapter';
 
@@ -46,7 +47,7 @@ export function selectSuggestionsByMode(
   return (completeFirst.length ? completeFirst : suggestions).slice(0, 3);
 }
 
-export function formatSuggestions(suggestions: Suggestion[]): string {
+export function formatSuggestions(suggestions: Suggestion[], explain = true): string {
   if (suggestions.length === 0) {
     return 'No suggestions generated.';
   }
@@ -55,8 +56,11 @@ export function formatSuggestions(suggestions: Suggestion[]): string {
     .map((suggestion, index) => {
       const lines = [
         `${index + 1}. ${suggestion.title} [${suggestion.priority}]`,
-        `   Why: ${suggestion.rationale}`,
       ];
+
+      if (explain) {
+        lines.push(`   Why: ${suggestion.rationale}`);
+      }
 
       for (const change of suggestion.changes) {
         lines.push(`   - ${change}`);
@@ -71,7 +75,7 @@ export function formatSuggestions(suggestions: Suggestion[]): string {
     .join('\n\n');
 }
 
-export function formatAnalysisReport(report: AnalysisReport): string {
+export function formatAnalysisReport(report: AnalysisReport, explain = false): string {
   const topWeaknesses = report.weaknesses
     .filter((entry) => entry.weakCount >= 2)
     .slice(0, 3)
@@ -87,7 +91,7 @@ export function formatAnalysisReport(report: AnalysisReport): string {
     : [];
 
   const issueLines = report.issues.length
-    ? report.issues.map((issue) => `- [${issue.severity}] ${issue.summary}`).join('\n')
+    ? report.issues.map((issue) => explain ? `- [${issue.severity}] ${issue.summary} — ${issue.details}` : `- [${issue.severity}] ${issue.summary}`).join('\n')
     : '- No major structural issues found.';
 
   const topThreats = report.threats.topPressureThreats
@@ -127,6 +131,85 @@ export function formatAnalysisReport(report: AnalysisReport): string {
     issueLines,
     '',
     'Suggestions',
-    formatSuggestions(report.suggestions),
+    formatSuggestions(report.suggestions, true),
+    ...(explain && report.battlePlan.notes.length
+      ? ['', 'Explain', ...report.battlePlan.notes.map((note) => `- ${note}`)]
+      : []),
   ].join('\n');
+}
+
+export function formatBringPlan(plan: PreviewMatchupPlan): string {
+  return [
+    `Recommended lead: ${plan.recommendedLead}`,
+    `Best three to bring: ${plan.recommendedBring.join(', ') || 'None'}`,
+    `Bench order: ${plan.benchOrder.join(', ') || 'None'}`,
+    `Likely opponent leads: ${plan.opponentLikelyLeads.join(', ') || 'Unknown'}`,
+    `Likely opponent backlines: ${plan.opponentBacklinePatterns.join(' | ') || 'Unknown'}`,
+    `Match pace: ${plan.pace}`,
+    '',
+    'Speed notes',
+    ...(plan.speedNotes.length ? plan.speedNotes.map((note) => `- ${note}`) : ['- None']),
+    '',
+    'Damage notes',
+    ...(plan.damageNotes.length ? plan.damageNotes.map((note) => `- ${note}`) : ['- None']),
+    '',
+    'Win conditions',
+    ...(plan.winConditions.length ? plan.winConditions.map((note) => `- ${note}`) : ['- None']),
+    '',
+    'Why this line',
+    ...(plan.reasons.length ? plan.reasons.map((note) => `- ${note}`) : ['- None']),
+  ].join('\n');
+}
+
+export function formatOptimizationReport(report: TeamSetOptimizationReport): string {
+  if (report.entries.length === 0) {
+    return 'No obvious set optimizations were found.';
+  }
+
+  return report.entries.map((entry, index) => [
+    `${index + 1}. ${entry.member}`,
+    `   Summary: ${entry.summary}`,
+    ...entry.changes.map((change) => `   - ${change}`),
+    `   Preview: ${entry.preview}`,
+  ].join('\n')).join('\n\n');
+}
+
+export function formatMetaScouting(report: MetaScoutingReport): string {
+  return [
+    `Format: ${report.format}`,
+    `Live source: ${report.source}`,
+    `Updated: ${report.updatedAt}`,
+    '',
+    'Top threats',
+    ...(report.topThreats.length
+      ? report.topThreats.map((entry) => `- ${entry.species} (${entry.usage}%): ${entry.commonMoves.join(', ') || 'no move sample'}${entry.commonTera ? ` | Tera ${entry.commonTera}` : ''}`)
+      : ['- None']),
+    '',
+    'Common cores',
+    ...(report.commonCores.length ? report.commonCores.map((core) => `- ${core}`) : ['- None']),
+    '',
+    'Anti-meta ideas',
+    ...(report.antiMetaIdeas.length ? report.antiMetaIdeas.map((idea) => `- ${idea}`) : ['- None']),
+  ].join('\n');
+}
+
+export function formatConstrainedBuild(report: ConstrainedBuildReport): string {
+  return [
+    `Format: ${report.format}`,
+    `Style: ${report.style}`,
+    `Anchors: ${report.anchors.join(', ') || 'None supplied'}`,
+    `Missing roles: ${report.missingRoles.join(', ') || 'None'}`,
+    '',
+    'Recommended additions',
+    ...(report.recommendations.length
+      ? report.recommendations.map((entry, index) => `${index + 1}. ${entry.species} (${entry.score})\n   Why: ${entry.reasons.join('; ')}${entry.preview ? `\n   Preview: ${entry.preview}` : ''}`)
+      : ['- None']),
+    '',
+    'Notes',
+    ...(report.notes.length ? report.notes.map((note) => `- ${note}`) : ['- None']),
+  ].join('\n');
+}
+
+export function serializeTeam(team: Team): string {
+  return JSON.stringify(team, null, 2);
 }
