@@ -123,6 +123,14 @@ function getHazardTagsFromPreview(preview?: string | null): string[] {
   return hazards.length ? ['hazard', ...hazards.map((move) => `hazard:${toId(move)}`)] : [];
 }
 
+function getItemTagsFromPreview(preview?: string | null): string[] {
+  if (!preview) return [];
+
+  const head = preview.split('|')[0]?.trim() ?? '';
+  const [, item] = head.split('@').map((value) => value.trim());
+  return item ? [`item:${toId(item)}`] : [];
+}
+
 interface ClassicTypeCore {
   name: string;
   types: string[];
@@ -1092,11 +1100,12 @@ function selectDiverseRecommendations(
   limit: number,
   maxMegaCount = Number.POSITIVE_INFINITY,
   maxHazardCount = 1,
+  initialTagCounts?: Map<string, number>,
 ): BuildRecommendation[] {
   const remaining = [...candidates];
   const selected: RankedBuildCandidate[] = [];
   const typeCounts = new Map<string, number>();
-  const tagCounts = new Map<string, number>();
+  const tagCounts = new Map<string, number>(initialTagCounts ? [...initialTagCounts.entries()] : []);
 
   const getAdjustment = (candidate: RankedBuildCandidate): number => {
     let adjustment = 0;
@@ -1114,6 +1123,8 @@ function selectDiverseRecommendations(
     const repeatedTags = candidate.tags.filter((tag) => (tagCounts.get(tag) ?? 0) > 0);
     adjustment -= Math.max(0, repeatedTags.length - 1) * 3;
 
+    const duplicateItem = candidate.tags.some((tag) => tag.startsWith('item:') && (tagCounts.get(tag) ?? 0) >= 1);
+    if (duplicateItem) adjustment -= 1000;
     if (candidate.tags.includes('mega') && (tagCounts.get('mega') ?? 0) >= maxMegaCount) adjustment -= 1000;
     if (candidate.tags.includes('hazard') && (tagCounts.get('hazard') ?? 0) >= maxHazardCount) adjustment -= 1000;
 
@@ -1133,6 +1144,7 @@ function selectDiverseRecommendations(
     const next = remaining.shift();
     if (!next) break;
 
+    if (next.tags.some((tag) => tag.startsWith('item:') && (tagCounts.get(tag) ?? 0) >= 1)) continue;
     if (next.tags.includes('mega') && (tagCounts.get('mega') ?? 0) >= maxMegaCount) continue;
     if (next.tags.includes('hazard') && (tagCounts.get('hazard') ?? 0) >= maxHazardCount) continue;
 
@@ -1173,6 +1185,13 @@ export async function buildWithConstraints(constraints: BuildConstraints, deps: 
   const missingAnchorTypes = new Set(getMissingAnchorTypes(seedTeam, deps.dex));
   const megaAnchors = seedTeam.members.filter((member) => isMegaSet(member, deps.dex)).length;
   const hazardAnchors = seedTeam.members.filter((member) => hasConfiguredHazardMove(member)).length;
+  const initialTagCounts = new Map<string, number>();
+  for (const member of seedTeam.members) {
+    if (member.item) {
+      const key = `item:${toId(member.item)}`;
+      initialTagCounts.set(key, (initialTagCounts.get(key) ?? 0) + 1);
+    }
+  }
   const maxRecommendedMegas = Math.max(0, 2 - megaAnchors);
   const maxRecommendedHazards = Math.max(0, 1 - hazardAnchors);
 
@@ -1278,6 +1297,7 @@ export async function buildWithConstraints(constraints: BuildConstraints, deps: 
       const tags = [
         megaCandidate ? 'mega' : null,
         ...getHazardTagsFromPreview(preview),
+        ...getItemTagsFromPreview(preview),
         species.baseStats.spe >= 100 || hasPriority ? 'speed' : null,
         hasPivot ? 'pivot' : null,
         hasSupport ? 'utility' : null,
@@ -1307,6 +1327,7 @@ export async function buildWithConstraints(constraints: BuildConstraints, deps: 
     Math.max(1, 6 - seedTeam.members.length),
     maxRecommendedMegas,
     maxRecommendedHazards,
+    initialTagCounts,
   );
 
   return {
