@@ -1,12 +1,39 @@
+import { execFile } from 'node:child_process';
 import { promises as fs } from 'node:fs';
+import { promisify } from 'node:util';
 
 import type { AnalysisReport, Suggestion, Team } from '@pokemon/domain';
 import type { ConstrainedBuildReport, MetaScoutingReport, PreviewMatchupPlan, TeamSetOptimizationReport } from '@pokemon/builder';
 import { TeamBuildService } from '@pokemon/builder';
 import { createShowdownPorts } from '@pokemon/showdown-adapter';
 
+const execFileAsync = promisify(execFile);
+
+const CLIPBOARD_COMMANDS: Array<{ command: string; args: string[] }> = [
+  { command: 'wl-paste', args: ['--no-newline'] },
+  { command: 'xclip', args: ['-selection', 'clipboard', '-o'] },
+  { command: 'xsel', args: ['--clipboard', '--output'] },
+  { command: 'pbpaste', args: [] },
+  { command: 'powershell', args: ['-NoProfile', '-Command', 'Get-Clipboard'] },
+  { command: 'powershell.exe', args: ['-NoProfile', '-Command', 'Get-Clipboard'] },
+];
+
 export function createService(): TeamBuildService {
   return new TeamBuildService(createShowdownPorts());
+}
+
+export async function readClipboardText(): Promise<string> {
+  for (const entry of CLIPBOARD_COMMANDS) {
+    try {
+      const result = await execFileAsync(entry.command, entry.args, { maxBuffer: 1024 * 1024 });
+      const text = result.stdout?.toString() ?? '';
+      if (text.trim()) return text;
+    } catch {
+      // Try the next known clipboard command for this platform.
+    }
+  }
+
+  throw new Error('Could not read clipboard contents. On Linux, install wl-clipboard, xclip, or xsel, or pipe the Showdown text through stdin.');
 }
 
 export async function readTeamText(file?: string): Promise<string> {

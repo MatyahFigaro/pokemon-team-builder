@@ -2,7 +2,7 @@ import type { Command } from 'commander';
 
 import { getManualSetsPath, importManualSets, listManualSets } from '@pokemon/storage';
 
-import { createService, readTeamText } from '../shared.js';
+import { createService, readClipboardText, readTeamText } from '../shared.js';
 
 function parseCsvList(value?: string): string[] | undefined {
   if (!value) return undefined;
@@ -25,20 +25,25 @@ export function registerManualSetsCommand(program: Command): void {
     .description('Import one or more Showdown sets into the manual set registry for a format.')
     .requiredOption('--format <format>', 'Showdown format id')
     .option('-f, --file <path>', 'Path to a Showdown set or team text file')
+    .option('-c, --clipboard', 'Read the Showdown set text directly from the system clipboard')
     .option('--label <label>', 'Optional label for the imported sets')
     .option('--notes <notes>', 'Optional notes stored with the imported sets')
     .option('--roles <roles>', 'Comma-separated role tags such as pivot, wallbreaker, speed-control')
     .option('--styles <styles>', 'Comma-separated style tags such as balance, bulky-offense, rain')
-    .action(async (options: { format: string; file?: string; label?: string; notes?: string; roles?: string; styles?: string }) => {
+    .action(async (options: { format: string; file?: string; clipboard?: boolean; label?: string; notes?: string; roles?: string; styles?: string }) => {
+      if (options.file && options.clipboard) {
+        throw new Error('Choose either --file or --clipboard, not both.');
+      }
+
       const service = createService();
-      const teamText = await readTeamText(options.file);
+      const teamText = options.clipboard ? await readClipboardText() : await readTeamText(options.file);
       const team = service.importShowdown(teamText, options.format);
       const result = importManualSets(options.format, team.members, {
         label: options.label,
         notes: options.notes,
         roles: parseCsvList(options.roles),
         styles: parseCsvList(options.styles),
-        source: options.file ? `file:${options.file}` : 'stdin',
+        source: options.clipboard ? 'clipboard' : options.file ? `file:${options.file}` : 'stdin',
       });
 
       console.log(`Saved ${result.saved} set(s) to ${result.path}`);

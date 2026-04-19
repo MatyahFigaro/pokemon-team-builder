@@ -139,6 +139,18 @@ Import one or more Showdown sets into the manual registry:
 node apps/cli/dist/main.js manual-sets import --format gen9championsbssregma -f my-curated-sets.txt
 ```
 
+You can also import directly from your clipboard:
+
+```bash
+node apps/cli/dist/main.js manual-sets import --format gen9championsbssregma --clipboard
+```
+
+Or paste through stdin:
+
+```bash
+cat my-curated-sets.txt | node apps/cli/dist/main.js manual-sets import --format gen9championsbssregma
+```
+
 Inspect what is stored:
 
 ```bash
