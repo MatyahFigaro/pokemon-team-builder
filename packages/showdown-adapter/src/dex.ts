@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
 
-import type { SpeciesDexPort, SpeciesInfo } from '@pokemon/domain';
+import type { FormatMechanicsInfo, SpeciesDexPort, SpeciesInfo } from '@pokemon/domain';
 
 const require = createRequire(import.meta.url);
 const showdown = require('pokemon-showdown') as any;
@@ -145,6 +145,11 @@ const FORMAT_VALIDATION_FALLBACKS: Record<string, {resolvedFormat: string; warni
 };
 
 const legalPokemonCache = new Map<string, FormatPokemonInfo[]>();
+const formatMechanicsCache = new Map<string, FormatMechanicsInfo>();
+
+function toId(value: string | undefined): string {
+  return (value ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
 
 function buildAliases(format: { id: string; name: string; section?: string | null }): string[] {
   const haystack = `${format.id} ${format.name} ${format.section ?? ''}`.toLowerCase();
@@ -233,6 +238,98 @@ export function resolveFormatForValidation(formatId: string): {
     resolvedFormat: resolved.id,
     warning: fallback.warning,
   };
+}
+
+function ruleTextForFormat(format: any): string[] {
+  const ruleTable = typeof Dex.formats.getRuleTable === 'function' ? Dex.formats.getRuleTable(format) : null;
+  return [
+    ...(format.ruleset ?? []),
+    ...(format.banlist ?? []),
+    ...(format.restricted ?? []),
+    ...(ruleTable ? [...ruleTable.keys()] : []),
+  ].map((value) => String(value));
+}
+
+function formatHasRuleHint(format: any, ...needles: string[]): boolean {
+  const haystack = ruleTextForFormat(format).map(toId);
+  return needles.some((needle) => {
+    const target = toId(needle);
+    return haystack.some((value) => value.includes(target));
+  });
+}
+
+function isMechanicSetLegal(formatId: string, set: Record<string, unknown>, disallowedPatterns: RegExp[]): boolean {
+  const validator = showdown.TeamValidator.get(formatId);
+  const problems = validator.validateSet(set, {}) ?? [];
+
+  if (problems.length === 0) return true;
+
+  return !problems.some((problem: string) => disallowedPatterns.some((pattern) => pattern.test(problem)));
+}
+
+function detectFormatMechanics(formatId: string): FormatMechanicsInfo {
+  const resolved = resolveFormatForValidation(formatId);
+  const format = Dex.formats.get(resolved.resolvedFormat);
+  const formatKey = `${resolved.requestedFormat}::${resolved.resolvedFormat}`;
+
+  if (formatMechanicsCache.has(formatKey)) {
+    return formatMechanicsCache.get(formatKey)!;
+  }
+
+  const mod = toId(format.mod);
+  const id = toId(format.id);
+  const tera = (mod === 'gen9' || formatHasRuleHint(format, 'terastalclause', 'teratypepreview'))
+    && !formatHasRuleHint(format, 'notera', '-terastalclause');
+
+  const mega = isMechanicSetLegal(
+    resolved.resolvedFormat,
+    {
+      species: 'Charizard',
+      ability: 'Blaze',
+      item: 'Charizardite X',
+      moves: ['Flamethrower'],
+      level: 50,
+      evs: { hp: 1 },
+    },
+    [/item .* does not exist/i, /mega-.* does not exist/i],
+  );
+
+  const zMoves = isMechanicSetLegal(
+    resolved.resolvedFormat,
+    {
+      species: 'Garchomp',
+      ability: 'Rough Skin',
+      item: 'Groundium Z',
+      moves: ['Earthquake'],
+      level: 50,
+      evs: { hp: 1 },
+    },
+    [/item .* does not exist/i, /z/i],
+  );
+
+  const dynamax = mod === 'gen8' && !formatHasRuleHint(format, 'dynamaxclause', '-dynamax');
+
+  const primary: FormatMechanicsInfo['primary'] = tera
+    ? 'tera'
+    : mega
+      ? 'mega'
+      : dynamax
+        ? 'dynamax'
+        : zMoves
+          ? 'z-moves'
+          : 'none';
+
+  const notes: string[] = [];
+  if (resolved.warning) {
+    notes.push(resolved.warning);
+  }
+  if (id.includes('champions') && !tera) {
+    notes.push('This Champions format does not use Terastallization.');
+  }
+
+  const mechanics = { tera, mega, dynamax, zMoves, primary, notes } satisfies FormatMechanicsInfo;
+  formatMechanicsCache.set(formatKey, mechanics);
+  return mechanics;
 }
 
 function getProbeMoves(dex: any, species: any): string[] {
@@ -329,6 +426,10 @@ export class ShowdownDexAdapter implements SpeciesDexPort {
       tier: species.tier,
       bst: Object.values(baseStats).reduce((sum, value) => sum + value, 0),
     };
+  }
+
+  getFormatMechanics(format: string): FormatMechanicsInfo {
+    return detectFormatMechanics(format);
   }
 
   listAvailableSpecies(format: string): SpeciesInfo[] {

@@ -73,17 +73,25 @@ export function formatAnalysisReport(report: AnalysisReport): string {
     .map((threat) => `${threat.species} (${threat.pressure})`)
     .join(', ') || 'None';
 
+  const activeMechanics = [
+    report.profile.mechanics.tera ? 'Tera' : null,
+    report.profile.mechanics.mega ? 'Mega' : null,
+    report.profile.mechanics.dynamax ? 'Dynamax' : null,
+    report.profile.mechanics.zMoves ? 'Z-Moves' : null,
+  ].filter(Boolean).join(', ') || 'None';
+
   return [
     `Format: ${report.format}`,
     `Legality: ${report.legality.valid ? 'valid' : 'invalid'}`,
     ...legalityNotes,
     `Profile: ${report.profile.style} bring ${report.profile.bringCount} pick ${report.profile.pickCount} at level ${report.profile.levelCap}`,
+    `Mechanics: ${activeMechanics}`,
     `Score: ${report.score.total}/100`,
     `Speed: avg ${report.speed.averageBaseSpeed}, fastest ${report.speed.fastestBaseSpeed} (${report.battlePlan.speedControlRating})`,
     `Hazards: setter=${report.synergy.hasHazardSetter} removal=${report.synergy.hasHazardRemoval}`,
     `Likely leads: ${report.battlePlan.leadCandidates.join(', ') || 'None'}`,
     `Likely picks: ${report.battlePlan.likelyPicks.join(', ') || 'None'}`,
-    `Tera dependency: ${report.battlePlan.teraDependency}`,
+    `Tera dependency: ${report.battlePlan.teraDependency === 'not-applicable' ? 'n/a' : report.battlePlan.teraDependency}`,
     `Threat coverage: ${report.threats.coverageScore}/100 from ${report.threats.consideredThreatCount} evaluated threats`,
     `Top pressure threats: ${topThreats}`,
     `Top weakness pressure: ${topWeaknesses}`,

@@ -1,5 +1,47 @@
 import type { RoleSummary, SpeciesDexPort, SynergySummary, Team, TeamIssue } from '@pokemon/domain';
 
+function normalize(value: string | undefined): string {
+  return (value ?? '').trim().toLowerCase();
+}
+
+function isBssFormat(format: string): boolean {
+  const id = normalize(format);
+  return id.includes('bss') || id.includes('battlestadium') || id.includes('championsbss');
+}
+
+function getHazardSensitivity(team: Team, dex: SpeciesDexPort): { sensitive: boolean; reasons: string[] } {
+  const reasons: string[] = [];
+  let rockWeakCount = 0;
+
+  for (const member of team.members) {
+    const species = dex.getSpecies(member.species);
+    if (!species) continue;
+
+    const rockMultiplier = dex.getTypeEffectiveness('Rock', species.types);
+    if (rockMultiplier >= 4) {
+      reasons.push(`${species.name} is 4x weak to Stealth Rock.`);
+    }
+    if (normalize(member.ability) === 'multiscale') {
+      reasons.push(`${species.name} wants Multiscale intact.`);
+    }
+    if (normalize(member.item) === 'focus sash') {
+      reasons.push(`${species.name} relies on Focus Sash staying unbroken.`);
+    }
+    if (rockMultiplier > 1) {
+      rockWeakCount += 1;
+    }
+  }
+
+  if (rockWeakCount >= 3) {
+    reasons.push('Several members are meaningfully chipped by Stealth Rock.');
+  }
+
+  return {
+    sensitive: reasons.length > 0,
+    reasons,
+  };
+}
+
 export function analyzeSynergy(team: Team, dex: SpeciesDexPort, roles: RoleSummary[]): {
   synergy: SynergySummary;
   issues: TeamIssue[];
@@ -22,10 +64,12 @@ export function analyzeSynergy(team: Team, dex: SpeciesDexPort, roles: RoleSumma
   const hasHazardSetter = roles.some((entry) => entry.roles.includes('hazard-setter'));
   const hasHazardRemoval = roles.some((entry) => entry.roles.includes('hazard-removal'));
   const pivotCount = roles.filter((entry) => entry.roles.includes('pivot')).length;
+  const formatIsBss = isBssFormat(team.format);
+  const hazardSensitivity = getHazardSensitivity(team, dex);
 
   const missingRoles: string[] = [];
   if (!hasHazardSetter) missingRoles.push('hazard setter');
-  if (!hasHazardRemoval) missingRoles.push('hazard removal');
+  if (!hasHazardRemoval && (!formatIsBss || hazardSensitivity.sensitive)) missingRoles.push('hazard removal');
   if (pivotCount === 0) missingRoles.push('pivot');
 
   const duplicatePrimaryTypes = [...primaryTypes.entries()]
@@ -34,12 +78,21 @@ export function analyzeSynergy(team: Team, dex: SpeciesDexPort, roles: RoleSumma
 
   const issues: TeamIssue[] = [];
   if (!hasHazardRemoval) {
-    issues.push({
-      code: 'missing-hazard-removal',
-      severity: 'warning',
-      summary: 'The team has no hazard removal.',
-      details: 'Spikes and Stealth Rock will wear this team down quickly.',
-    });
+    if (!formatIsBss) {
+      issues.push({
+        code: 'missing-hazard-removal',
+        severity: 'warning',
+        summary: 'The team has no hazard removal.',
+        details: 'Spikes and Stealth Rock will wear this team down quickly.',
+      });
+    } else if (hazardSensitivity.sensitive) {
+      issues.push({
+        code: 'bss-hazard-sensitive-no-removal',
+        severity: hazardSensitivity.reasons.some((reason) => reason.includes('4x')) || hazardSensitivity.reasons.length >= 2 ? 'warning' : 'info',
+        summary: 'This BSS team is more hazard-sensitive than usual.',
+        details: `Removal is optional in BSS, but this roster has specific reasons to value it: ${hazardSensitivity.reasons.slice(0, 2).join(' ')}`,
+      });
+    }
   }
 
   if (duplicatePrimaryTypes.length > 0) {

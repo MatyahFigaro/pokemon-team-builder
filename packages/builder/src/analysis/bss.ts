@@ -19,6 +19,37 @@ function isBssFormat(format: string): boolean {
   return id.includes('bss') || id.includes('battlestadium') || id.includes('championsbss');
 }
 
+const priorityMoves = new Set([
+  'extreme speed',
+  'espeed',
+  'sucker punch',
+  'grassy glide',
+  'ice shard',
+  'mach punch',
+  'vacuum wave',
+  'shadow sneak',
+  'aqua jet',
+  'accelerock',
+  'first impression',
+]);
+
+const disruptionMoves = new Set([
+  'taunt',
+  'haze',
+  'encore',
+  'clear smog',
+  'yawn',
+  'will-o-wisp',
+  'thunder wave',
+  'roar',
+  'whirlwind',
+  'dragon tail',
+]);
+
+function hasTaggedMove(moves: string[], pool: Set<string>): boolean {
+  return moves.some((move) => pool.has(move));
+}
+
 function scoreLead(member: Team['members'][number], roles: RoleSummary, dex: SpeciesDexPort): number {
   const species = dex.getSpecies(member.species);
   if (!species) return 0;
@@ -32,6 +63,8 @@ function scoreLead(member: Team['members'][number], roles: RoleSummary, dex: Spe
   if (roles.roles.includes('speed-control')) score += 2;
   if (moves.includes('fake out')) score += 3;
   if (moves.includes('taunt')) score += 2;
+  if (hasTaggedMove(moves, disruptionMoves)) score += 2;
+  if (hasTaggedMove(moves, priorityMoves)) score += 1;
   if (species.baseStats.spe >= 95) score += 2;
   if (species.baseStats.hp + species.baseStats.def >= 185) score += 1;
 
@@ -42,11 +75,13 @@ function scorePick(member: Team['members'][number], roles: RoleSummary, dex: Spe
   const species = dex.getSpecies(member.species);
   if (!species) return 0;
 
+  const moves = member.moves.map(normalize);
   let score = 0;
   if (roles.roles.includes('wallbreaker')) score += 4;
   if (roles.roles.includes('setup-sweeper')) score += 3;
   if (roles.roles.includes('speed-control')) score += 3;
   if (roles.roles.includes('pivot')) score += 2;
+  if (hasTaggedMove(moves, priorityMoves)) score += 2;
   if (species.baseStats.spe >= 100) score += 2;
   if (species.bst >= 540) score += 2;
   if (species.baseStats.hp + Math.max(species.baseStats.def, species.baseStats.spd) >= 190) score += 1;
@@ -152,11 +187,14 @@ export function analyzeBssPlan(
 } {
   const style = isBssFormat(team.format) ? 'bss' : 'standard';
 
+  const mechanics = dex.getFormatMechanics(team.format);
+
   const profile: FormatProfileSummary = {
     style,
     bringCount: style === 'bss' ? defaultBssMeta.bringCount : 6,
     pickCount: style === 'bss' ? defaultBssMeta.pickCount : 6,
     levelCap: style === 'bss' ? defaultBssMeta.levelCap : 100,
+    mechanics,
     speedBenchmarks: style === 'bss' ? defaultBssMeta.speedBenchmarks : [],
   };
 
@@ -185,7 +223,9 @@ export function analyzeBssPlan(
     .map((entry) => entry.name);
 
   const speedControlRating = getSpeedControlRating(speed.fastestBaseSpeed, speed.hasSpeedControl);
-  const teraDependency = getTeraDependency(team, roles, dex);
+  const teraDependency = mechanics.tera ? getTeraDependency(team, roles, dex) : 'not-applicable';
+  const priorityCount = team.members.filter((member) => hasTaggedMove(member.moves.map(normalize), priorityMoves)).length;
+  const disruptionCount = team.members.filter((member) => hasTaggedMove(member.moves.map(normalize), disruptionMoves)).length;
 
   const legalPool = dex.listAvailableSpecies(team.format);
   const poolThreatNames = legalPool
@@ -220,12 +260,27 @@ export function analyzeBssPlan(
 
   const notes: string[] = [
     `Threat scoring includes ${legalPool.length} legal species from the active format, even when exact sets are unknown.`,
+    `Active mechanics: ${[
+      mechanics.tera ? 'Tera' : null,
+      mechanics.mega ? 'Mega' : null,
+      mechanics.dynamax ? 'Dynamax' : null,
+      mechanics.zMoves ? 'Z-Moves' : null,
+    ].filter(Boolean).join(', ') || 'none'}.`,
+    ...mechanics.notes,
   ];
 
   for (const core of defaultBssMeta.commonCores) {
     if (core.members.every((member) => team.members.some((slot) => slot.species === member))) {
       notes.push(`Detected common BSS-style core: ${core.name}.`);
     }
+  }
+
+  if (priorityCount > 0) {
+    notes.push(`Priority is present on ${priorityCount} slot(s), which helps short BSS endgames.`);
+  }
+
+  if (disruptionCount > 0) {
+    notes.push(`Emergency disruption is present on ${disruptionCount} slot(s).`);
   }
 
   const threats: ThreatCoverageSummary = {
@@ -254,6 +309,33 @@ export function analyzeBssPlan(
       summary: 'The team looks exposed to several format threats.',
       details: 'Species-level threat scoring suggests too many legal threats pressure this structure even without exact set knowledge.',
       memberNames: topPressureThreats.map((threat) => threat.species),
+    });
+  }
+
+  if (style === 'bss' && priorityCount === 0 && speedControlRating !== 'good') {
+    issues.push({
+      code: 'bss-emergency-control-low',
+      severity: 'info',
+      summary: 'The team lacks strong emergency speed or priority insurance.',
+      details: 'In BSS, short bring-3 games are easier to stabilize when you have either real speed control or at least one strong priority user.',
+    });
+  }
+
+  if (style === 'bss' && disruptionCount === 0) {
+    issues.push({
+      code: 'bss-disruption-low',
+      severity: 'info',
+      summary: 'The team has limited anti-setup disruption.',
+      details: 'Taunt, Haze, Encore, phazing, or status utility can be very useful emergency tools in BSS.',
+    });
+  }
+
+  if (style === 'bss' && !mechanics.tera && team.members.some((member) => member.teraType)) {
+    issues.push({
+      code: 'format-no-tera',
+      severity: 'info',
+      summary: 'This format does not use Terastallization.',
+      details: 'Tera Type lines on imported sets do not represent an in-battle mechanic here.',
     });
   }
 

@@ -1,3 +1,4 @@
+import type { FormatMechanicsInfo } from './ports.js';
 import type { FormatId, TeamRole } from './team.js';
 
 export type IssueSeverity = 'info' | 'warning' | 'error';
@@ -55,6 +56,7 @@ export interface FormatProfileSummary {
   bringCount: number;
   pickCount: number;
   levelCap: number;
+  mechanics: FormatMechanicsInfo;
   speedBenchmarks: Array<{ label: string; value: number }>;
 }
 
@@ -62,7 +64,7 @@ export interface BattlePlanSummary {
   leadCandidates: string[];
   likelyPicks: string[];
   speedControlRating: 'poor' | 'fair' | 'good';
-  teraDependency: 'low' | 'medium' | 'high';
+  teraDependency: 'low' | 'medium' | 'high' | 'not-applicable';
   notes: string[];
 }
 

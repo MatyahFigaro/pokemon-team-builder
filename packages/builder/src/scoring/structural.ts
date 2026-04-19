@@ -18,8 +18,13 @@ export function computeStructuralScore(team: Team, report: Omit<AnalysisReport, 
     notes.push('Incomplete team penalty.');
   }
 
-  if (report.synergy.hasHazardSetter) utility += 6;
-  if (report.synergy.hasHazardRemoval) utility += 8;
+  if (report.profile.style === 'bss') {
+    if (report.synergy.hasHazardSetter) utility += 4;
+    if (report.synergy.hasHazardRemoval) utility += 2;
+  } else {
+    if (report.synergy.hasHazardSetter) utility += 6;
+    if (report.synergy.hasHazardRemoval) utility += 8;
+  }
   if (report.speed.fastCount > 0) offense += 6;
   if (report.speed.hasSpeedControl) offense += 5;
   if (report.synergy.uniqueTypes.length >= 8) defense += 5;
@@ -29,7 +34,8 @@ export function computeStructuralScore(team: Team, report: Omit<AnalysisReport, 
     defense += Math.round((report.threats.coverageScore - 50) / 10);
     offense += report.battlePlan.speedControlRating === 'good' ? 4 : report.battlePlan.speedControlRating === 'poor' ? -4 : 1;
     utility += report.battlePlan.leadCandidates.length >= 2 ? 3 : 0;
-    utility -= report.battlePlan.teraDependency === 'high' ? 3 : 0;
+    utility += Math.min(4, report.synergy.pivotCount * 2);
+    utility -= report.profile.mechanics.tera && report.battlePlan.teraDependency === 'high' ? 3 : 0;
   }
 
   for (const issue of report.issues) {

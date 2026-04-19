@@ -11,8 +11,18 @@ export interface SpeciesInfo {
   bst: number;
 }
 
+export interface FormatMechanicsInfo {
+  tera: boolean;
+  mega: boolean;
+  dynamax: boolean;
+  zMoves: boolean;
+  primary: 'tera' | 'mega' | 'dynamax' | 'z-moves' | 'none';
+  notes: string[];
+}
+
 export interface SpeciesDexPort {
   getSpecies(name: string): SpeciesInfo | null;
+  getFormatMechanics(format: FormatId): FormatMechanicsInfo;
   listAvailableSpecies(format: FormatId): SpeciesInfo[];
   listTypes(): string[];
   getTypeEffectiveness(attackingType: string, defendingTypes: readonly string[]): number;

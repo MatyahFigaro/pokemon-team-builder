@@ -39,18 +39,27 @@ export function buildPatchSuggestions(team: Team, report: AnalysisReport): Sugge
     });
   }
 
-  const hazardIssue = report.issues.find((issue) => issue.code === 'missing-hazard-removal');
+  const hazardIssue = report.issues.find((issue) => issue.code === 'missing-hazard-removal' || issue.code === 'bss-hazard-sensitive-no-removal');
   if (hazardIssue) {
+    const isBss = report.profile.style === 'bss';
+
     suggestions.push({
       kind: 'patch',
-      title: 'Add reliable hazard removal',
-      rationale: 'The current team can be overwhelmed by Stealth Rock and Spikes over longer games.',
-      priority: 'high',
+      title: isBss ? 'Consider selective hazard control' : 'Add reliable hazard removal',
+      rationale: isBss
+        ? 'Removal is usually optional in BSS, but this build has specific hazard-sensitive pieces that can justify one control slot.'
+        : 'The current team can be overwhelmed by Stealth Rock and Spikes over longer games.',
+      priority: isBss ? 'medium' : 'high',
       targetSlot: getTargetSlot(team, hazardIssue),
-      changes: [
-        'Turn one low-impact slot into a Defog or Rapid Spin user.',
-        'Prefer a remover that also patches one of your repeated weaknesses.',
-      ],
+      changes: isBss
+        ? [
+            'Only add removal if it fits one of your likely bring-3 lines.',
+            'Prefer a remover that also preserves Multiscale, Focus Sash, or patches a key matchup.',
+          ]
+        : [
+            'Turn one low-impact slot into a Defog or Rapid Spin user.',
+            'Prefer a remover that also patches one of your repeated weaknesses.',
+          ],
       exampleOptions: ['Great Tusk', 'Corviknight', 'Iron Treads'],
     });
   }
@@ -88,16 +97,40 @@ export function buildPatchSuggestions(team: Team, report: AnalysisReport): Sugge
   }
 
   if (report.speed.fastCount === 0 || !report.speed.hasSpeedControl) {
+    const isBss = report.profile.style === 'bss';
+
     suggestions.push({
       kind: 'patch',
-      title: 'Improve speed control',
-      rationale: 'The team risks losing momentum against offensive builds and late-game sweepers.',
+      title: isBss ? 'Improve speed control or priority' : 'Improve speed control',
+      rationale: isBss
+        ? 'BSS endgames often hinge on either a fast closer or a strong priority backstop.'
+        : 'The team risks losing momentum against offensive builds and late-game sweepers.',
+      priority: 'medium',
+      changes: isBss
+        ? [
+            'Add a Choice Scarf user, a naturally fast revenge killer, or a high-value priority user.',
+            'If the team is bulky, Taunt or Thunder Wave can also function as emergency tempo control.',
+          ]
+        : [
+            'Add a Choice Scarf user or a naturally fast revenge killer.',
+            'If the team is bulky, consider Thunder Wave or Tailwind support instead.',
+          ],
+      exampleOptions: isBss ? ['Dragonite', 'Kingambit', 'Rillaboom'] : ['Dragapult', 'Iron Valiant', 'Meowscarada'],
+    });
+  }
+
+  const disruptionIssue = report.issues.find((issue) => issue.code === 'bss-disruption-low');
+  if (disruptionIssue) {
+    suggestions.push({
+      kind: 'set-adjustment',
+      title: 'Add one emergency stop button',
+      rationale: 'BSS rewards having at least one reliable answer to setup or volatile positioning turns.',
       priority: 'medium',
       changes: [
-        'Add a Choice Scarf user or a naturally fast revenge killer.',
-        'If the team is bulky, consider Thunder Wave or Tailwind support instead.',
+        'Fit Taunt, Haze, Encore, phazing, or status utility on one likely bring-3 slot.',
+        'Prefer the change on a Pokémon you already want to select often in preview.',
       ],
-      exampleOptions: ['Dragapult', 'Iron Valiant', 'Meowscarada'],
+      exampleOptions: ['Taunt Heatran', 'Haze Primarina', 'Encore support'],
     });
   }
 
