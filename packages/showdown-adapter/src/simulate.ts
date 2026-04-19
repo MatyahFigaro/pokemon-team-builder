@@ -43,6 +43,11 @@ function toId(value: string | undefined): string {
   return normalize(value).replace(/[^a-z0-9]/g, '');
 }
 
+function isBssLikeFormat(format: string): boolean {
+  const id = toId(format);
+  return id.includes('bss') || id.includes('battlestadium') || id.includes('championsbss');
+}
+
 function canonicalSpeciesId(value: string | undefined): string {
   return toId((value ?? '').replace(/-mega(?:-[xy])?$/i, '').replace(/-primal$/i, ''));
 }
@@ -182,6 +187,32 @@ function scoreSetIntoTarget(
   return score;
 }
 
+function getCombinations<T>(values: T[], size: number): T[][] {
+  if (size <= 0) return [[]];
+  if (size >= values.length) return [values.slice()];
+
+  const combinations: T[][] = [];
+  const current: T[] = [];
+
+  const walk = (start: number) => {
+    if (current.length === size) {
+      combinations.push([...current]);
+      return;
+    }
+
+    for (let index = start; index <= values.length - (size - current.length); index += 1) {
+      const value = values[index];
+      if (value === undefined) continue;
+      current.push(value);
+      walk(index + 1);
+      current.pop();
+    }
+  };
+
+  walk(0);
+  return combinations;
+}
+
 function pickBring(
   team: Team,
   opponent: Team,
@@ -189,14 +220,43 @@ function pickBring(
   format: string,
   limit = 3,
 ): PokemonSet[] {
-  return [...team.members]
-    .map((member) => ({
-      member,
-      score: opponent.members.reduce((sum, target) => sum + scoreSetIntoTarget(member, target, dex, format), 0),
+  const bringCount = Math.max(1, Math.min(limit, team.members.length));
+  const memberScores = new Map(team.members.map((member) => [member, opponent.members.reduce((sum, target) => sum + scoreSetIntoTarget(member, target, dex, format), 0)]));
+
+  if (bringCount === 1) {
+    return [...team.members]
+      .sort((left, right) => (memberScores.get(right) ?? 0) - (memberScores.get(left) ?? 0) || left.species.localeCompare(right.species))
+      .slice(0, 1);
+  }
+
+  const candidateGroups = getCombinations(team.members, bringCount)
+    .map((members) => ({
+      members,
+      score: scoreBringGroup(members, opponent.members, dex, format),
     }))
-    .sort((left, right) => right.score - left.score || left.member.species.localeCompare(right.member.species))
-    .slice(0, Math.min(limit, team.members.length))
-    .map((entry) => entry.member);
+    .sort((left, right) => right.score - left.score);
+
+  const bestGroup = candidateGroups[0]?.members ?? team.members.slice(0, bringCount);
+
+  return [...bestGroup]
+    .sort((left, right) => (memberScores.get(right) ?? 0) - (memberScores.get(left) ?? 0) || left.species.localeCompare(right.species));
+}
+
+function buildTeamPreviewChoice(
+  team: Team,
+  opponent: Team,
+  dex: ShowdownDexAdapter,
+  format: string,
+): string {
+  const bringLimit = isBssLikeFormat(format) ? Math.min(3, team.members.length) : team.members.length;
+  const bring = pickBring(team, opponent, dex, format, bringLimit);
+  const selectedSlots = bring
+    .map((member) => team.members.findIndex((entry) => entry === member) + 1)
+    .filter((slot) => slot > 0);
+  const remainingSlots = team.members.map((_, index) => index + 1).filter((slot) => !selectedSlots.includes(slot));
+  const ordered = [...selectedSlots, ...remainingSlots];
+
+  return ordered.length ? `team ${ordered.join('')}` : 'default';
 }
 
 function scoreBringGroup(
@@ -304,7 +364,7 @@ class EngineGreedyPlayer {
 
   private buildChoice(request: PlayerChoiceRequest): string | undefined {
     if (request.wait) return undefined;
-    if (request.teamPreview) return 'default';
+    if (request.teamPreview) return buildTeamPreviewChoice(this.team, this.opponent, this.dex, this.format);
 
     const sidePokemon = request.side?.pokemon ?? [];
 
@@ -452,7 +512,9 @@ export class ShowdownSimulationAdapter implements SimulationPort {
   }
 
   private async simulateWithBattleStream(request: MatchupRequest): Promise<MatchupSummary> {
-    const iterations = Math.max(1, Math.min(request.iterations || 4, 4));
+    const maxIterations = isBssLikeFormat(request.format) ? 8 : 6;
+    const defaultIterations = isBssLikeFormat(request.format) ? 6 : 4;
+    const iterations = Math.max(1, Math.min(request.iterations || defaultIterations, maxIterations));
 
     if (!request.team.members.length || !request.opponent.members.length) {
       return {
