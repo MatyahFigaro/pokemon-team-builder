@@ -3,6 +3,7 @@
 import { Command } from 'commander';
 
 import { registerAnalyzeCommand } from './commands/analyze.js';
+import { registerBenchmarkTeamsCommand } from './commands/benchmark-teams.js';
 import { registerBuildCommand } from './commands/build.js';
 import { registerInteractiveCommand } from './commands/interactive.js';
 import { registerListFormatsCommand } from './commands/list-formats.js';
@@ -25,6 +26,7 @@ program
   .version('0.1.0');
 
 registerAnalyzeCommand(program);
+registerBenchmarkTeamsCommand(program);
 registerBuildCommand(program);
 registerInteractiveCommand(program);
 registerListFormatsCommand(program);

@@ -1,4 +1,5 @@
 export * from './bss-meta.js';
+export * from './manual-benchmark-teams.js';
 export * from './manual-sets.js';
 export * from './usage-analytics.js';
 

@@ -44,6 +44,6 @@ export interface PokemonSet {
 export interface Team {
   format: FormatId;
   members: PokemonSet[];
-  source?: 'showdown-import' | 'manual' | 'generated';
+  source?: 'showdown-import' | 'manual' | 'generated' | 'manual-benchmark';
   notes?: string[];
 }

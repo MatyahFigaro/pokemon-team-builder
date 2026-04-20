@@ -4,6 +4,7 @@ import { getSpeciesUsage, getTopUsageNames, getTopUsageThreatNames, getUsageAnal
 import { summarizeRoles } from '../analysis/roles.js';
 import { getCompetitiveSet, getCompetitiveSetPreview, type PreviewRoleHint } from '../suggest/legal-preview.js';
 import { analyzeTeam, type AnalyzeTeamDeps } from './analyze-team.js';
+import { buildStrongThreatSimulationTeams } from './simulation-benchmarks.js';
 
 export interface PreviewMatchupPlan {
   recommendedLead: string;
@@ -242,42 +243,10 @@ function getCombinations<T>(values: T[], size: number): T[][] {
 }
 
 function buildThreatSimulationTeams(format: string, dex: SpeciesDexPort, validator: ValidationPort): Team[] {
-  const snapshot = getUsageAnalyticsForFormat(format);
-  const lineups: string[][] = [];
-
-  if (snapshot?.species.length) {
-    for (const entry of snapshot.species.slice(0, 6)) {
-      const lineup = uniqueStrings([entry.species, ...getTopUsageNames(entry.teammates, 2)]).slice(0, 3);
-      if (lineup.length >= 2) lineups.push(lineup);
-    }
-
-    const topNames = uniqueStrings(snapshot.species.slice(0, 9).map((entry) => entry.species));
-    for (let index = 0; index < topNames.length; index += 3) {
-      const lineup = uniqueStrings(topNames.slice(index, index + 3));
-      if (lineup.length >= 2) lineups.push(lineup);
-    }
-  } else {
-    const threats = getTopUsageThreatNames(format, 9);
-    for (let index = 0; index < threats.length; index += 3) {
-      const lineup = uniqueStrings(threats.slice(index, index + 3));
-      if (lineup.length >= 2) lineups.push(lineup);
-    }
-  }
-
-  return lineups
-    .filter((lineup, index, array) => array.findIndex((candidate) => candidate.map(toId).join('|') === lineup.map(toId).join('|')) === index)
-    .slice(0, isBssLikeFormat(format) ? 4 : 3)
-    .map((lineup) => ({
-      format,
-      source: 'generated' as const,
-      members: lineup
-        .map((speciesName) => getCompetitiveSet(speciesName, format, dex, validator, {
-          roleHint: getBuildRoleHint(speciesName, dex),
-        }))
-        .filter((set): set is PokemonSet => Boolean(set))
-        .slice(0, 3),
-    }))
-    .filter((candidate) => candidate.members.length >= 2);
+  return buildStrongThreatSimulationTeams(format, dex, validator, {
+    maxTeams: isBssLikeFormat(format) ? 5 : 4,
+    roleHintResolver: (speciesName, style) => getBuildRoleHint(speciesName, dex, style),
+  });
 }
 
 async function simulateAgainstThreatPool(
@@ -361,7 +330,7 @@ async function rescoreTopCandidatesWithSimulation(
     const reasons = [...candidate.reasons];
 
     if (summary.winRate >= 0.62) {
-      reasons.unshift(`tests well in bring-3-aware Showdown sims into rotating live pressure (${Math.round(summary.winRate * 100)}%)`);
+      reasons.unshift(`tests well in bring-3-aware Showdown sims into strong live benchmark shells (${Math.round(summary.winRate * 100)}%)`);
     } else if (summary.winRate <= 0.42) {
       score -= 4;
       reasons.push('still looks shaky in simulation against the current threat cluster');

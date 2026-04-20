@@ -10,6 +10,7 @@ import { computeStructuralScore } from '../scoring/structural.js';
 import { getCompetitiveSet, type PreviewRoleHint } from '../suggest/legal-preview.js';
 import { buildCompletionSuggestions } from '../suggest/complete.js';
 import { buildPatchSuggestions } from '../suggest/patch.js';
+import { buildStrongThreatSimulationTeams } from './simulation-benchmarks.js';
 
 export interface AnalyzeTeamDeps {
   dex: SpeciesDexPort;
@@ -90,42 +91,9 @@ function hydrateTeamWithReferenceSets(team: Team, deps: AnalyzeTeamDeps): Team {
 }
 
 function buildThreatSimulationTeams(team: Team, deps: AnalyzeTeamDeps): Team[] {
-  const snapshot = getUsageAnalyticsForFormat(team.format);
-  const lineups: string[][] = [];
-
-  if (snapshot?.species.length) {
-    for (const entry of snapshot.species.slice(0, 6)) {
-      const lineup = uniqueStrings([entry.species, ...getTopUsageNames(entry.teammates, 2)]).slice(0, 3);
-      if (lineup.length >= 2) lineups.push(lineup);
-    }
-
-    const topNames = uniqueStrings(snapshot.species.slice(0, 9).map((entry) => entry.species));
-    for (let index = 0; index < topNames.length; index += 3) {
-      const lineup = uniqueStrings(topNames.slice(index, index + 3));
-      if (lineup.length >= 2) lineups.push(lineup);
-    }
-  } else {
-    const threats = getTopUsageThreatNames(team.format, 9);
-    for (let index = 0; index < threats.length; index += 3) {
-      const lineup = uniqueStrings(threats.slice(index, index + 3));
-      if (lineup.length >= 2) lineups.push(lineup);
-    }
-  }
-
-  return lineups
-    .filter((lineup, index, array) => array.findIndex((candidate) => candidate.map(toId).join('|') === lineup.map(toId).join('|')) === index)
-    .slice(0, isBssLikeFormat(team.format) ? 4 : 3)
-    .map((lineup) => ({
-      format: team.format,
-      source: 'generated' as const,
-      members: lineup
-        .map((speciesName) => getCompetitiveSet(speciesName, team.format, deps.dex, deps.validator, {
-          roleHint: 'default',
-        }))
-        .filter((set): set is NonNullable<typeof set> => Boolean(set))
-        .slice(0, 3),
-    }))
-    .filter((candidate) => candidate.members.length >= 2);
+  return buildStrongThreatSimulationTeams(team.format, deps.dex, deps.validator, {
+    maxTeams: isBssLikeFormat(team.format) ? 5 : 4,
+  });
 }
 
 async function getSimulationAnalysis(team: Team, deps: AnalyzeTeamDeps): Promise<SimulationAnalysisSummary> {
@@ -143,7 +111,7 @@ async function getSimulationAnalysis(team: Team, deps: AnalyzeTeamDeps): Promise
   if (opponents.length === 0) {
     return {
       enabled: false,
-      opponentModel: 'live threat rotation unavailable',
+      opponentModel: 'strong benchmark rotation unavailable',
       opponentPreview: [],
       iterations: 0,
       notes: [],
@@ -165,9 +133,13 @@ async function getSimulationAnalysis(team: Team, deps: AnalyzeTeamDeps): Promise
   const opponentPreview = uniqueStrings(opponents.flatMap((opponent) => opponent.members.map((member) => member.species))).slice(0, 6);
   const winRate = iterations > 0 ? (wins + (draws * 0.5)) / iterations : 0.5;
 
+  const usesManualBenchmarks = opponents.some((opponent) => opponent.source === 'manual-benchmark');
+
   return {
     enabled: true,
-    opponentModel: `live threat rotation (${opponents.length} shells)`,
+    opponentModel: usesManualBenchmarks
+      ? `manual benchmark rotation (${opponents.length} teams)`
+      : `strong live benchmark rotation (${opponents.length} shells)`,
     opponentPreview,
     iterations,
     wins,
@@ -198,7 +170,7 @@ export async function analyzeTeam(team: Team, deps: AnalyzeTeamDeps): Promise<An
           code: 'simulation-matchups-rough',
           severity: 'warning',
           summary: 'Sim-backed matchup spread looks rough',
-          details: `This team only reached about ${Math.round(simulation.winRate * 100)}% across ${simulation.iterations} games into the live threat cluster (${simulation.opponentPreview.join(', ') || simulation.opponentModel}).`,
+          details: `This team only reached about ${Math.round(simulation.winRate * 100)}% across ${simulation.iterations} games into the strong benchmark cluster (${simulation.opponentPreview.join(', ') || simulation.opponentModel}).`,
           memberNames: workingTeam.members.map((member) => member.species),
         }]
       : simulation.winRate >= 0.6
@@ -206,7 +178,7 @@ export async function analyzeTeam(team: Team, deps: AnalyzeTeamDeps): Promise<An
             code: 'simulation-matchups-solid',
             severity: 'info',
             summary: 'Sim-backed matchup spread looks solid',
-            details: `This team reached about ${Math.round(simulation.winRate * 100)}% across ${simulation.iterations} games into the live threat cluster (${simulation.opponentPreview.join(', ') || simulation.opponentModel}).`,
+            details: `This team reached about ${Math.round(simulation.winRate * 100)}% across ${simulation.iterations} games into the strong benchmark cluster (${simulation.opponentPreview.join(', ') || simulation.opponentModel}).`,
             memberNames: workingTeam.members.map((member) => member.species),
           }]
         : [])
@@ -217,7 +189,7 @@ export async function analyzeTeam(team: Team, deps: AnalyzeTeamDeps): Promise<An
     notes: uniqueStrings([
       ...bssAnalysis.battlePlan.notes,
       simulation.enabled && typeof simulation.winRate === 'number'
-        ? `Simulation snapshot versus ${simulation.opponentPreview.join(', ') || simulation.opponentModel} landed around ${Math.round(simulation.winRate * 100)}% over ${simulation.iterations} games.`
+        ? `Simulation snapshot versus ${simulation.opponentPreview.join(', ') || simulation.opponentModel} landed around ${Math.round(simulation.winRate * 100)}% over ${simulation.iterations} games against the stronger default benchmark pool.`
         : '',
       ...simulation.notes,
     ]),
