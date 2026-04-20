@@ -89,31 +89,43 @@ function hydrateTeamWithReferenceSets(team: Team, deps: AnalyzeTeamDeps): Team {
   };
 }
 
-function buildThreatSimulationTeam(team: Team, deps: AnalyzeTeamDeps): Team | null {
+function buildThreatSimulationTeams(team: Team, deps: AnalyzeTeamDeps): Team[] {
   const snapshot = getUsageAnalyticsForFormat(team.format);
-  const topCluster = snapshot?.species.length
-    ? uniqueStrings(
-      snapshot.species.slice(0, 4).flatMap((entry, index) => [
-        entry.species,
-        ...getTopUsageNames(entry.teammates, index === 0 ? 2 : 1),
-      ]),
-    )
-    : getTopUsageThreatNames(team.format, 6);
+  const lineups: string[][] = [];
 
-  const members = topCluster
-    .map((speciesName) => getCompetitiveSet(speciesName, team.format, deps.dex, deps.validator, {
-      roleHint: 'default',
+  if (snapshot?.species.length) {
+    for (const entry of snapshot.species.slice(0, 6)) {
+      const lineup = uniqueStrings([entry.species, ...getTopUsageNames(entry.teammates, 2)]).slice(0, 3);
+      if (lineup.length >= 2) lineups.push(lineup);
+    }
+
+    const topNames = uniqueStrings(snapshot.species.slice(0, 9).map((entry) => entry.species));
+    for (let index = 0; index < topNames.length; index += 3) {
+      const lineup = uniqueStrings(topNames.slice(index, index + 3));
+      if (lineup.length >= 2) lineups.push(lineup);
+    }
+  } else {
+    const threats = getTopUsageThreatNames(team.format, 9);
+    for (let index = 0; index < threats.length; index += 3) {
+      const lineup = uniqueStrings(threats.slice(index, index + 3));
+      if (lineup.length >= 2) lineups.push(lineup);
+    }
+  }
+
+  return lineups
+    .filter((lineup, index, array) => array.findIndex((candidate) => candidate.map(toId).join('|') === lineup.map(toId).join('|')) === index)
+    .slice(0, isBssLikeFormat(team.format) ? 4 : 3)
+    .map((lineup) => ({
+      format: team.format,
+      source: 'generated' as const,
+      members: lineup
+        .map((speciesName) => getCompetitiveSet(speciesName, team.format, deps.dex, deps.validator, {
+          roleHint: 'default',
+        }))
+        .filter((set): set is NonNullable<typeof set> => Boolean(set))
+        .slice(0, 3),
     }))
-    .filter((set): set is NonNullable<typeof set> => Boolean(set))
-    .slice(0, 3);
-
-  if (members.length === 0) return null;
-
-  return {
-    format: team.format,
-    source: 'generated',
-    members,
-  };
+    .filter((candidate) => candidate.members.length >= 2);
 }
 
 async function getSimulationAnalysis(team: Team, deps: AnalyzeTeamDeps): Promise<SimulationAnalysisSummary> {
@@ -127,35 +139,42 @@ async function getSimulationAnalysis(team: Team, deps: AnalyzeTeamDeps): Promise
     };
   }
 
-  const opponent = buildThreatSimulationTeam(team, deps);
-  if (!opponent) {
+  const opponents = buildThreatSimulationTeams(team, deps);
+  if (opponents.length === 0) {
     return {
       enabled: false,
-      opponentModel: 'live threat cluster unavailable',
+      opponentModel: 'live threat rotation unavailable',
       opponentPreview: [],
       iterations: 0,
       notes: [],
     };
   }
 
-  const iterations = isBssLikeFormat(team.format) ? 5 : 3;
-  const summary = await deps.simulator.simulateMatchup({
+  const iterationsPerOpponent = isBssLikeFormat(team.format) ? 2 : 1;
+  const summaries = await Promise.all(opponents.map((opponent) => deps.simulator?.simulateMatchup({
     format: team.format,
     team,
     opponent,
-    iterations,
-  });
+    iterations: iterationsPerOpponent,
+  })));
+
+  const wins = summaries.reduce((sum, summary) => sum + (summary?.wins ?? 0), 0);
+  const losses = summaries.reduce((sum, summary) => sum + (summary?.losses ?? 0), 0);
+  const draws = summaries.reduce((sum, summary) => sum + (summary?.draws ?? 0), 0);
+  const iterations = summaries.reduce((sum, summary) => sum + (summary?.iterations ?? 0), 0);
+  const opponentPreview = uniqueStrings(opponents.flatMap((opponent) => opponent.members.map((member) => member.species))).slice(0, 6);
+  const winRate = iterations > 0 ? (wins + (draws * 0.5)) / iterations : 0.5;
 
   return {
     enabled: true,
-    opponentModel: 'live threat cluster',
-    opponentPreview: opponent.members.map((member) => member.species),
-    iterations: summary.iterations,
-    wins: summary.wins,
-    losses: summary.losses,
-    draws: summary.draws,
-    winRate: summary.winRate,
-    notes: summary.notes,
+    opponentModel: `live threat rotation (${opponents.length} shells)`,
+    opponentPreview,
+    iterations,
+    wins,
+    losses,
+    draws,
+    winRate,
+    notes: uniqueStrings(summaries.flatMap((summary) => summary?.notes ?? [])).slice(0, 5),
   };
 }
 

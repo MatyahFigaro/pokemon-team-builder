@@ -215,30 +215,68 @@ function uniqueStrings(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean)));
 }
 
-function buildThreatSimulationTeam(format: string, dex: SpeciesDexPort, validator: ValidationPort): Team | null {
+function buildThreatSimulationTeams(format: string, dex: SpeciesDexPort, validator: ValidationPort): Team[] {
   const snapshot = getUsageAnalyticsForFormat(format);
-  const topCluster = snapshot?.species.length
-    ? uniqueStrings(
-      snapshot.species.slice(0, 4).flatMap((entry, index) => [
-        entry.species,
-        ...getTopUsageNames(entry.teammates, index === 0 ? 2 : 1),
-      ]),
-    )
-    : getTopUsageThreatNames(format, 8);
+  const lineups: string[][] = [];
 
-  const members = topCluster
-    .map((speciesName) => getCompetitiveSet(speciesName, format, dex, validator, {
-      roleHint: getBuildRoleHint(speciesName, dex),
+  if (snapshot?.species.length) {
+    for (const entry of snapshot.species.slice(0, 6)) {
+      const lineup = uniqueStrings([entry.species, ...getTopUsageNames(entry.teammates, 2)]).slice(0, 3);
+      if (lineup.length >= 2) lineups.push(lineup);
+    }
+
+    const topNames = uniqueStrings(snapshot.species.slice(0, 9).map((entry) => entry.species));
+    for (let index = 0; index < topNames.length; index += 3) {
+      const lineup = uniqueStrings(topNames.slice(index, index + 3));
+      if (lineup.length >= 2) lineups.push(lineup);
+    }
+  } else {
+    const threats = getTopUsageThreatNames(format, 9);
+    for (let index = 0; index < threats.length; index += 3) {
+      const lineup = uniqueStrings(threats.slice(index, index + 3));
+      if (lineup.length >= 2) lineups.push(lineup);
+    }
+  }
+
+  return lineups
+    .filter((lineup, index, array) => array.findIndex((candidate) => candidate.map(toId).join('|') === lineup.map(toId).join('|')) === index)
+    .slice(0, isBssLikeFormat(format) ? 4 : 3)
+    .map((lineup) => ({
+      format,
+      source: 'generated' as const,
+      members: lineup
+        .map((speciesName) => getCompetitiveSet(speciesName, format, dex, validator, {
+          roleHint: getBuildRoleHint(speciesName, dex),
+        }))
+        .filter((set): set is PokemonSet => Boolean(set))
+        .slice(0, 3),
     }))
-    .filter((set): set is PokemonSet => Boolean(set))
-    .slice(0, 3);
+    .filter((candidate) => candidate.members.length >= 2);
+}
 
-  if (members.length === 0) return null;
+async function simulateAgainstThreatPool(
+  team: Team,
+  opponents: Team[],
+  format: string,
+  deps: AnalyzeTeamDeps,
+  iterationsPerOpponent: number,
+): Promise<{ winRate: number; notes: string[] } | null> {
+  if (!deps.simulator || opponents.length === 0) return null;
+
+  const summaries = await Promise.all(opponents.map((opponent) => deps.simulator?.simulateMatchup({
+    format,
+    team,
+    opponent,
+    iterations: iterationsPerOpponent,
+  })));
+
+  const wins = summaries.reduce((sum, summary) => sum + (summary?.wins ?? 0), 0);
+  const draws = summaries.reduce((sum, summary) => sum + (summary?.draws ?? 0), 0);
+  const iterations = summaries.reduce((sum, summary) => sum + (summary?.iterations ?? 0), 0);
 
   return {
-    format,
-    source: 'generated',
-    members,
+    winRate: iterations > 0 ? (wins + (draws * 0.5)) / iterations : 0.5,
+    notes: uniqueStrings(summaries.flatMap((summary) => summary?.notes ?? [])).slice(0, 4),
   };
 }
 
@@ -263,8 +301,8 @@ async function rescoreTopCandidatesWithSimulation(
 ): Promise<RankedBuildCandidate[]> {
   if (!deps.simulator) return candidates;
 
-  const probeOpponent = buildThreatSimulationTeam(constraints.format, deps.dex, deps.validator);
-  if (!probeOpponent) return candidates;
+  const probeOpponents = buildThreatSimulationTeams(constraints.format, deps.dex, deps.validator);
+  if (probeOpponents.length === 0) return candidates;
 
   const simulationWindow = candidates.length;
   const rescored = await Promise.all(candidates.slice(0, simulationWindow).map(async (candidate) => {
@@ -283,12 +321,13 @@ async function rescoreTopCandidatesWithSimulation(
         .slice(0, 6),
     };
 
-    const summary = await deps.simulator?.simulateMatchup({
-      format: constraints.format,
-      team: simTeam,
-      opponent: probeOpponent,
-      iterations: isBssLikeFormat(constraints.format) ? 3 : 2,
-    });
+    const summary = await simulateAgainstThreatPool(
+      simTeam,
+      probeOpponents,
+      constraints.format,
+      deps,
+      1,
+    );
 
     if (!summary) return candidate;
 
@@ -296,7 +335,7 @@ async function rescoreTopCandidatesWithSimulation(
     const reasons = [...candidate.reasons];
 
     if (summary.winRate >= 0.62) {
-      reasons.unshift(`tests well in bring-3-aware Showdown sims into current live pressure (${Math.round(summary.winRate * 100)}%)`);
+      reasons.unshift(`tests well in bring-3-aware Showdown sims into rotating live pressure (${Math.round(summary.winRate * 100)}%)`);
     } else if (summary.winRate <= 0.42) {
       score -= 4;
       reasons.push('still looks shaky in simulation against the current threat cluster');
@@ -1185,8 +1224,8 @@ async function selectRecommendationsWithIteration(
     };
   }
 
-  const probeOpponent = buildThreatSimulationTeam(constraints.format, deps.dex, deps.validator);
-  if (!probeOpponent) {
+  const probeOpponents = buildThreatSimulationTeams(constraints.format, deps.dex, deps.validator);
+  if (probeOpponents.length === 0) {
     return {
       recommendations: selectDiverseRecommendations(candidates, limit, maxMegaCount, maxHazardCount, initialTagCounts),
     };
@@ -1213,12 +1252,13 @@ async function selectRecommendationsWithIteration(
           .slice(0, 6),
       };
 
-      const summary = await deps.simulator?.simulateMatchup({
-        format: constraints.format,
-        team: trialTeam,
-        opponent: probeOpponent,
-        iterations: projectedWinRate >= targetWinRate ? 1 : 2,
-      });
+      const summary = await simulateAgainstThreatPool(
+        trialTeam,
+        probeOpponents,
+        constraints.format,
+        deps,
+        projectedWinRate >= targetWinRate ? 1 : 2,
+      );
 
       const winRate = summary?.winRate ?? 0.5;
       const newTypeBonus = candidate.types.some((type) => (typeCounts.get(type) ?? 0) === 0) ? 4 : 0;
