@@ -2892,6 +2892,857 @@
           "spe": 31
         }
       }
+    },
+    {
+      "id": "gen9championsbssregma::charizardmegax::charizarditex::toughclaws::jolly::notera::atk32-spd2-spe32::atk31-def31-hp31-spa31-spd31-spe31::dragonclaw-dragondance-earthquake-flareblitz::noroles::nostyles::default",
+      "format": "gen9championsbssregma",
+      "species": "Charizard-Mega-X",
+      "source": "clipboard",
+      "createdAt": "2026-04-20T01:12:29.450Z",
+      "updatedAt": "2026-04-20T01:12:29.450Z",
+      "set": {
+        "species": "Charizard-Mega-X",
+        "item": "Charizardite X",
+        "ability": "toughclaws",
+        "nature": "jolly",
+        "level": 50,
+        "moves": [
+          "Flare Blitz",
+          "Earthquake",
+          "Dragon Claw",
+          "Dragon Dance"
+        ],
+        "evs": {
+          "hp": 0,
+          "atk": 32,
+          "def": 0,
+          "spa": 0,
+          "spd": 2,
+          "spe": 32
+        },
+        "ivs": {
+          "hp": 31,
+          "atk": 31,
+          "def": 31,
+          "spa": 31,
+          "spd": 31,
+          "spe": 31
+        }
+      }
+    },
+    {
+      "id": "gen9championsbssregma::charizardmegay::charizarditey::drought::timid::notera::hp2-spa32-spe32::atk31-def31-hp31-spa31-spd31-spe31::ancientpower-overheat-scorchingsands-solarbeam::noroles::nostyles::default",
+      "format": "gen9championsbssregma",
+      "species": "Charizard-Mega-Y",
+      "source": "clipboard",
+      "createdAt": "2026-04-20T01:12:29.450Z",
+      "updatedAt": "2026-04-20T01:12:29.450Z",
+      "set": {
+        "species": "Charizard-Mega-Y",
+        "item": "Charizardite Y",
+        "ability": "drought",
+        "nature": "timid",
+        "level": 50,
+        "moves": [
+          "Overheat",
+          "Solar Beam",
+          "Scorching Sands",
+          "Ancient Power"
+        ],
+        "evs": {
+          "hp": 2,
+          "atk": 0,
+          "def": 0,
+          "spa": 32,
+          "spd": 0,
+          "spe": 32
+        },
+        "ivs": {
+          "hp": 31,
+          "atk": 31,
+          "def": 31,
+          "spa": 31,
+          "spd": 31,
+          "spe": 31
+        }
+      }
+    },
+    {
+      "id": "gen9championsbssregma::blastoisemega::blastoisinite::megalauncher::modest::notera::hp1-spa32-spd1-spe32::atk31-def31-hp31-spa31-spd31-spe31::aurasphere-hydropump-shellsmash-surf::noroles::nostyles::default",
+      "format": "gen9championsbssregma",
+      "species": "Blastoise-Mega",
+      "source": "clipboard",
+      "createdAt": "2026-04-20T01:12:29.450Z",
+      "updatedAt": "2026-04-20T01:12:29.450Z",
+      "set": {
+        "species": "Blastoise-Mega",
+        "item": "Blastoisinite",
+        "ability": "megalauncher",
+        "nature": "modest",
+        "level": 50,
+        "moves": [
+          "Hydro Pump",
+          "Surf",
+          "Aura Sphere",
+          "Shell Smash"
+        ],
+        "evs": {
+          "hp": 1,
+          "atk": 0,
+          "def": 0,
+          "spa": 32,
+          "spd": 1,
+          "spe": 32
+        },
+        "ivs": {
+          "hp": 31,
+          "atk": 31,
+          "def": 31,
+          "spa": 31,
+          "spd": 31,
+          "spe": 31
+        }
+      }
+    },
+    {
+      "id": "gen9championsbssregma::clefablemega::clefablite::magicbounce::bold::notera::hp32-spa32-spd2::atk31-def31-hp31-spa31-spd31-spe31::calmmind-moonblast-moonlight-storedpower::noroles::nostyles::default",
+      "format": "gen9championsbssregma",
+      "species": "Clefable-Mega",
+      "source": "clipboard",
+      "createdAt": "2026-04-20T01:12:29.450Z",
+      "updatedAt": "2026-04-20T01:12:29.450Z",
+      "set": {
+        "species": "Clefable-Mega",
+        "item": "Clefablite",
+        "ability": "magicbounce",
+        "nature": "bold",
+        "level": 50,
+        "moves": [
+          "Calm Mind",
+          "Stored Power",
+          "Moonblast",
+          "Moonlight"
+        ],
+        "evs": {
+          "hp": 32,
+          "atk": 0,
+          "def": 0,
+          "spa": 32,
+          "spd": 2,
+          "spe": 0
+        },
+        "ivs": {
+          "hp": 31,
+          "atk": 31,
+          "def": 31,
+          "spa": 31,
+          "spd": 31,
+          "spe": 31
+        }
+      }
+    },
+    {
+      "id": "gen9championsbssregma::victreebelmega::victreebelite::innardsout::modest::notera::hp32-spa32-spe2::atk31-def31-hp31-spa31-spd31-spe31::leafstorm-sludgebomb-strengthsap-suckerpunch::noroles::nostyles::default",
+      "format": "gen9championsbssregma",
+      "species": "Victreebel-Mega",
+      "source": "clipboard",
+      "createdAt": "2026-04-20T01:12:29.450Z",
+      "updatedAt": "2026-04-20T01:12:29.450Z",
+      "set": {
+        "species": "Victreebel-Mega",
+        "item": "Victreebelite",
+        "ability": "innardsout",
+        "nature": "modest",
+        "level": 50,
+        "moves": [
+          "Leaf Storm",
+          "Sludge Bomb",
+          "Sucker Punch",
+          "Strength Sap"
+        ],
+        "evs": {
+          "hp": 32,
+          "atk": 0,
+          "def": 0,
+          "spa": 32,
+          "spd": 0,
+          "spe": 2
+        },
+        "ivs": {
+          "hp": 31,
+          "atk": 31,
+          "def": 31,
+          "spa": 31,
+          "spd": 31,
+          "spe": 31
+        }
+      }
+    },
+    {
+      "id": "gen9championsbssregma::victreebelmega::victreebelite::innardsout::calm::notera::hp32-spa2-spd32::atk31-def31-hp31-spa31-spd31-spe31::acidspray-gigadrain-stockpile-strengthsap::noroles::nostyles::default",
+      "format": "gen9championsbssregma",
+      "species": "Victreebel-Mega",
+      "source": "clipboard",
+      "createdAt": "2026-04-20T01:12:29.450Z",
+      "updatedAt": "2026-04-20T01:12:29.450Z",
+      "set": {
+        "species": "Victreebel-Mega",
+        "item": "Victreebelite",
+        "ability": "innardsout",
+        "nature": "calm",
+        "level": 50,
+        "moves": [
+          "Giga Drain",
+          "Acid Spray",
+          "Stockpile",
+          "Strength Sap"
+        ],
+        "evs": {
+          "hp": 32,
+          "atk": 0,
+          "def": 0,
+          "spa": 2,
+          "spd": 32,
+          "spe": 0
+        },
+        "ivs": {
+          "hp": 31,
+          "atk": 31,
+          "def": 31,
+          "spa": 31,
+          "spd": 31,
+          "spe": 31
+        }
+      }
+    },
+    {
+      "id": "gen9championsbssregma::feraligatrmega::feraligite::dragonize::adamant::notera::atk32-def1-hp31-spd1-spe1::atk31-def31-hp31-spa31-spd31-spe31::aquajet-bodyslam-liquidation-swordsdance::noroles::nostyles::default",
+      "format": "gen9championsbssregma",
+      "species": "Feraligatr-Mega",
+      "source": "clipboard",
+      "createdAt": "2026-04-20T01:12:29.450Z",
+      "updatedAt": "2026-04-20T01:12:29.450Z",
+      "set": {
+        "species": "Feraligatr-Mega",
+        "item": "Feraligite",
+        "ability": "dragonize",
+        "nature": "adamant",
+        "level": 50,
+        "moves": [
+          "Liquidation",
+          "Aqua Jet",
+          "Body Slam",
+          "Swords Dance"
+        ],
+        "evs": {
+          "hp": 31,
+          "atk": 32,
+          "def": 1,
+          "spa": 0,
+          "spd": 1,
+          "spe": 1
+        },
+        "ivs": {
+          "hp": 31,
+          "atk": 31,
+          "def": 31,
+          "spa": 31,
+          "spd": 31,
+          "spe": 31
+        }
+      }
+    },
+    {
+      "id": "gen9championsbssregma::politoed::leftovers::drizzle::bold::notera::def32-spa2-spd32::atk31-def31-hp31-spa31-spd31-spe31::hypnosis-perishsong-substitute-whirlpool::noroles::nostyles::default",
+      "format": "gen9championsbssregma",
+      "species": "Politoed",
+      "source": "clipboard",
+      "createdAt": "2026-04-20T01:12:29.450Z",
+      "updatedAt": "2026-04-20T01:12:29.450Z",
+      "set": {
+        "species": "Politoed",
+        "item": "Leftovers",
+        "ability": "drizzle",
+        "nature": "bold",
+        "level": 50,
+        "moves": [
+          "Perish Song",
+          "Whirlpool",
+          "Substitute",
+          "Hypnosis"
+        ],
+        "evs": {
+          "hp": 0,
+          "atk": 0,
+          "def": 32,
+          "spa": 2,
+          "spd": 32,
+          "spe": 0
+        },
+        "ivs": {
+          "hp": 31,
+          "atk": 31,
+          "def": 31,
+          "spa": 31,
+          "spd": 31,
+          "spe": 31
+        }
+      }
+    },
+    {
+      "id": "gen9championsbssregma::scizormega::scizorite::technician::adamant::notera::atk32-hp2-spe32::atk31-def31-hp31-spa31-spd31-spe31::bulletpunch-knockoff-swordsdance-uturn::noroles::nostyles::default",
+      "format": "gen9championsbssregma",
+      "species": "Scizor-Mega",
+      "source": "clipboard",
+      "createdAt": "2026-04-20T01:12:29.450Z",
+      "updatedAt": "2026-04-20T01:12:29.450Z",
+      "set": {
+        "species": "Scizor-Mega",
+        "item": "Scizorite",
+        "ability": "technician",
+        "nature": "adamant",
+        "level": 50,
+        "moves": [
+          "Swords Dance",
+          "U-turn",
+          "Knock Off",
+          "Bullet Punch"
+        ],
+        "evs": {
+          "hp": 2,
+          "atk": 32,
+          "def": 0,
+          "spa": 0,
+          "spd": 0,
+          "spe": 32
+        },
+        "ivs": {
+          "hp": 31,
+          "atk": 31,
+          "def": 31,
+          "spa": 31,
+          "spd": 31,
+          "spe": 31
+        }
+      }
+    },
+    {
+      "id": "gen9championsbssregma::skarmory::leftovers::sturdy::impish::notera::def32-hp32-spd2::atk31-def31-hp31-spa31-spd31-spe31::bodypress-irondefense-roost-spikes::noroles::nostyles::default",
+      "format": "gen9championsbssregma",
+      "species": "Skarmory",
+      "source": "clipboard",
+      "createdAt": "2026-04-20T01:12:29.450Z",
+      "updatedAt": "2026-04-20T01:12:29.450Z",
+      "set": {
+        "species": "Skarmory",
+        "item": "Leftovers",
+        "ability": "sturdy",
+        "nature": "impish",
+        "level": 50,
+        "moves": [
+          "Body Press",
+          "Iron Defense",
+          "Spikes",
+          "Roost"
+        ],
+        "evs": {
+          "hp": 32,
+          "atk": 0,
+          "def": 32,
+          "spa": 0,
+          "spd": 2,
+          "spe": 0
+        },
+        "ivs": {
+          "hp": 31,
+          "atk": 31,
+          "def": 31,
+          "spa": 31,
+          "spd": 31,
+          "spe": 31
+        }
+      }
+    },
+    {
+      "id": "gen9championsbssregma::tyranitarmega::tyranitarite::sandstream::adamant::notera::atk32-hp2-spe32::atk31-def31-hp31-spa31-spd31-spe31::crunch-dragondance-lowkick-rockslide::noroles::nostyles::default",
+      "format": "gen9championsbssregma",
+      "species": "Tyranitar-Mega",
+      "source": "clipboard",
+      "createdAt": "2026-04-20T01:12:29.450Z",
+      "updatedAt": "2026-04-20T01:12:29.450Z",
+      "set": {
+        "species": "Tyranitar-Mega",
+        "item": "Tyranitarite",
+        "ability": "sandstream",
+        "nature": "adamant",
+        "level": 50,
+        "moves": [
+          "Crunch",
+          "Rock Slide",
+          "Low Kick",
+          "Dragon Dance"
+        ],
+        "evs": {
+          "hp": 2,
+          "atk": 32,
+          "def": 0,
+          "spa": 0,
+          "spd": 0,
+          "spe": 32
+        },
+        "ivs": {
+          "hp": 31,
+          "atk": 31,
+          "def": 31,
+          "spa": 31,
+          "spd": 31,
+          "spe": 31
+        }
+      }
+    },
+    {
+      "id": "gen9championsbssregma::medichammega::medichamite::purepower::adamant::notera::atk32-hp2-spe32::atk31-def31-hp31-spa31-spd31-spe31::closecombat-fakeout-highjumpkick-zenheadbutt::noroles::nostyles::default",
+      "format": "gen9championsbssregma",
+      "species": "Medicham-Mega",
+      "source": "clipboard",
+      "createdAt": "2026-04-20T01:12:29.450Z",
+      "updatedAt": "2026-04-20T01:12:29.450Z",
+      "set": {
+        "species": "Medicham-Mega",
+        "item": "Medichamite",
+        "ability": "purepower",
+        "nature": "adamant",
+        "level": 50,
+        "moves": [
+          "High Jump Kick",
+          "Zen Headbutt",
+          "Close Combat",
+          "Fake Out"
+        ],
+        "evs": {
+          "hp": 2,
+          "atk": 32,
+          "def": 0,
+          "spa": 0,
+          "spd": 0,
+          "spe": 32
+        },
+        "ivs": {
+          "hp": 31,
+          "atk": 31,
+          "def": 31,
+          "spa": 31,
+          "spd": 31,
+          "spe": 31
+        }
+      }
+    },
+    {
+      "id": "gen9championsbssregma::garchomp::choicescarf::roughskin::jolly::notera::atk32-hp2-spe32::atk31-def31-hp31-spa31-spd31-spe31::dragonclaw-earthquake-outrage-stoneedge::noroles::nostyles::default",
+      "format": "gen9championsbssregma",
+      "species": "Garchomp",
+      "source": "clipboard",
+      "createdAt": "2026-04-20T01:12:29.450Z",
+      "updatedAt": "2026-04-20T01:12:29.450Z",
+      "set": {
+        "species": "Garchomp",
+        "item": "Choice Scarf",
+        "ability": "roughskin",
+        "nature": "jolly",
+        "level": 50,
+        "moves": [
+          "Outrage",
+          "Earthquake",
+          "Stone Edge",
+          "Dragon Claw"
+        ],
+        "evs": {
+          "hp": 2,
+          "atk": 32,
+          "def": 0,
+          "spa": 0,
+          "spd": 0,
+          "spe": 32
+        },
+        "ivs": {
+          "hp": 31,
+          "atk": 31,
+          "def": 31,
+          "spa": 31,
+          "spd": 31,
+          "spe": 31
+        }
+      }
+    },
+    {
+      "id": "gen9championsbssregma::garchomp::choicescarf::roughskin::jolly::notera::atk32-hp2-spe32::atk31-def31-hp31-spa31-spd31-spe31::bulldoze-dragonclaw-earthquake-rockslide::noroles::nostyles::default",
+      "format": "gen9championsbssregma",
+      "species": "Garchomp",
+      "source": "clipboard",
+      "createdAt": "2026-04-20T01:12:29.450Z",
+      "updatedAt": "2026-04-20T01:12:29.450Z",
+      "set": {
+        "species": "Garchomp",
+        "item": "Choice Scarf",
+        "ability": "roughskin",
+        "nature": "jolly",
+        "level": 50,
+        "moves": [
+          "Rock Slide",
+          "Dragon Claw",
+          "Earthquake",
+          "Bulldoze"
+        ],
+        "evs": {
+          "hp": 2,
+          "atk": 32,
+          "def": 0,
+          "spa": 0,
+          "spd": 0,
+          "spe": 32
+        },
+        "ivs": {
+          "hp": 31,
+          "atk": 31,
+          "def": 31,
+          "spa": 31,
+          "spd": 31,
+          "spe": 31
+        }
+      }
+    },
+    {
+      "id": "gen9championsbssregma::hippowdon::mentalherb::sandstream::impish::notera::def32-hp32-spe2::atk31-def31-hp31-spa31-spd31-spe31::earthquake-slackoff-stealthrock-yawn::noroles::nostyles::default",
+      "format": "gen9championsbssregma",
+      "species": "Hippowdon",
+      "source": "clipboard",
+      "createdAt": "2026-04-20T01:12:29.450Z",
+      "updatedAt": "2026-04-20T01:12:29.450Z",
+      "set": {
+        "species": "Hippowdon",
+        "item": "Mental Herb",
+        "ability": "sandstream",
+        "nature": "impish",
+        "level": 50,
+        "moves": [
+          "Stealth Rock",
+          "Yawn",
+          "Slack Off",
+          "Earthquake"
+        ],
+        "evs": {
+          "hp": 32,
+          "atk": 0,
+          "def": 32,
+          "spa": 0,
+          "spd": 0,
+          "spe": 2
+        },
+        "ivs": {
+          "hp": 31,
+          "atk": 31,
+          "def": 31,
+          "spa": 31,
+          "spd": 31,
+          "spe": 31
+        }
+      }
+    },
+    {
+      "id": "gen9championsbssregma::weavile::focussash::pressure::jolly::notera::atk32-hp2-spe32::atk31-def31-hp31-spa31-spd31-spe31::fakeout-knockoff-lowkick-tripleaxel::noroles::nostyles::default",
+      "format": "gen9championsbssregma",
+      "species": "Weavile",
+      "source": "clipboard",
+      "createdAt": "2026-04-20T01:12:29.450Z",
+      "updatedAt": "2026-04-20T01:12:29.450Z",
+      "set": {
+        "species": "Weavile",
+        "item": "Focus Sash",
+        "ability": "pressure",
+        "nature": "jolly",
+        "level": 50,
+        "moves": [
+          "Knock Off",
+          "Triple Axel",
+          "Low Kick",
+          "Fake Out"
+        ],
+        "evs": {
+          "hp": 2,
+          "atk": 32,
+          "def": 0,
+          "spa": 0,
+          "spd": 0,
+          "spe": 32
+        },
+        "ivs": {
+          "hp": 31,
+          "atk": 31,
+          "def": 31,
+          "spa": 31,
+          "spd": 31,
+          "spe": 31
+        }
+      }
+    },
+    {
+      "id": "gen9championsbssregma::rotomwash::leftovers::levitate::bold::notera::def28-hp32-spd6::atk31-def31-hp31-spa31-spd31-spe31::hydropump-painsplit-voltswitch-willowisp::noroles::nostyles::default",
+      "format": "gen9championsbssregma",
+      "species": "Rotom-Wash",
+      "source": "clipboard",
+      "createdAt": "2026-04-20T01:12:29.450Z",
+      "updatedAt": "2026-04-20T01:12:29.450Z",
+      "set": {
+        "species": "Rotom-Wash",
+        "item": "Leftovers",
+        "ability": "levitate",
+        "nature": "bold",
+        "level": 50,
+        "moves": [
+          "Volt Switch",
+          "Hydro Pump",
+          "Will-O-Wisp",
+          "Pain Split"
+        ],
+        "evs": {
+          "hp": 32,
+          "atk": 0,
+          "def": 28,
+          "spa": 0,
+          "spd": 6,
+          "spe": 0
+        },
+        "ivs": {
+          "hp": 31,
+          "atk": 31,
+          "def": 31,
+          "spa": 31,
+          "spd": 31,
+          "spe": 31
+        }
+      }
+    },
+    {
+      "id": "gen9championsbssregma::rotomwash::sitrusberry::levitate::calm::notera::def32-hp32-spa2::atk31-def31-hp31-spa31-spd31-spe31::hydropump-thunderbolt-voltswitch-willowisp::noroles::nostyles::default",
+      "format": "gen9championsbssregma",
+      "species": "Rotom-Wash",
+      "source": "clipboard",
+      "createdAt": "2026-04-20T01:12:29.450Z",
+      "updatedAt": "2026-04-20T01:12:29.450Z",
+      "set": {
+        "species": "Rotom-Wash",
+        "item": "Sitrus Berry",
+        "ability": "levitate",
+        "nature": "calm",
+        "level": 50,
+        "moves": [
+          "Thunderbolt",
+          "Hydro Pump",
+          "Will-O-Wisp",
+          "Volt Switch"
+        ],
+        "evs": {
+          "hp": 32,
+          "atk": 0,
+          "def": 32,
+          "spa": 2,
+          "spd": 0,
+          "spe": 0
+        },
+        "ivs": {
+          "hp": 31,
+          "atk": 31,
+          "def": 31,
+          "spa": 31,
+          "spd": 31,
+          "spe": 31
+        }
+      }
+    },
+    {
+      "id": "gen9championsbssregma::excadrill::focussash::moldbreaker::jolly::notera::atk32-hp2-spe32::atk31-def31-hp31-spa31-spd31-spe31::earthquake-ironhead-rapidspin-stealthrock::noroles::nostyles::default",
+      "format": "gen9championsbssregma",
+      "species": "Excadrill",
+      "source": "clipboard",
+      "createdAt": "2026-04-20T01:12:29.450Z",
+      "updatedAt": "2026-04-20T01:12:29.450Z",
+      "set": {
+        "species": "Excadrill",
+        "item": "Focus Sash",
+        "ability": "moldbreaker",
+        "nature": "jolly",
+        "level": 50,
+        "moves": [
+          "Earthquake",
+          "Iron Head",
+          "Stealth Rock",
+          "Rapid Spin"
+        ],
+        "evs": {
+          "hp": 2,
+          "atk": 32,
+          "def": 0,
+          "spa": 0,
+          "spd": 0,
+          "spe": 32
+        },
+        "ivs": {
+          "hp": 31,
+          "atk": 31,
+          "def": 31,
+          "spa": 31,
+          "spd": 31,
+          "spe": 31
+        }
+      }
+    },
+    {
+      "id": "gen9championsbssregma::zoroarkhisui::focussash::illusion::naive::notera::def1-hp1-spa32-spe32::atk31-def31-hp31-spa31-spd31-spe31::bittermalice-hypervoice-nastyplot-shadowsneak::noroles::nostyles::default",
+      "format": "gen9championsbssregma",
+      "species": "Zoroark-Hisui",
+      "source": "clipboard",
+      "createdAt": "2026-04-20T01:12:29.450Z",
+      "updatedAt": "2026-04-20T01:12:29.450Z",
+      "set": {
+        "species": "Zoroark-Hisui",
+        "item": "Focus Sash",
+        "ability": "illusion",
+        "nature": "naive",
+        "level": 50,
+        "moves": [
+          "Bitter Malice",
+          "Nasty Plot",
+          "Hyper Voice",
+          "Shadow Sneak"
+        ],
+        "evs": {
+          "hp": 1,
+          "atk": 0,
+          "def": 1,
+          "spa": 32,
+          "spd": 0,
+          "spe": 32
+        },
+        "ivs": {
+          "hp": 31,
+          "atk": 31,
+          "def": 31,
+          "spa": 31,
+          "spd": 31,
+          "spe": 31
+        }
+      }
+    },
+    {
+      "id": "gen9championsbssregma::hydreigon::choicescarf::levitate::modest::notera::def1-spa32-spd1-spe32::atk31-def31-hp31-spa31-spd31-spe31::darkpulse-dracometeor-earthpower-flamethrower::noroles::nostyles::default",
+      "format": "gen9championsbssregma",
+      "species": "Hydreigon",
+      "source": "clipboard",
+      "createdAt": "2026-04-20T01:12:29.450Z",
+      "updatedAt": "2026-04-20T01:12:29.450Z",
+      "set": {
+        "species": "Hydreigon",
+        "item": "Choice Scarf",
+        "ability": "levitate",
+        "nature": "modest",
+        "level": 50,
+        "moves": [
+          "Draco Meteor",
+          "Dark Pulse",
+          "Flamethrower",
+          "Earth Power"
+        ],
+        "evs": {
+          "hp": 0,
+          "atk": 0,
+          "def": 1,
+          "spa": 32,
+          "spd": 1,
+          "spe": 32
+        },
+        "ivs": {
+          "hp": 31,
+          "atk": 31,
+          "def": 31,
+          "spa": 31,
+          "spd": 31,
+          "spe": 31
+        }
+      }
+    },
+    {
+      "id": "gen9championsbssregma::chesnaughtmega::chesnaughtite::bulletproof::impish::notera::def32-hp32-spd2::atk31-def31-hp31-spa31-spd31-spe31::bodypress-irondefense-knockoff-synthesis::noroles::nostyles::default",
+      "format": "gen9championsbssregma",
+      "species": "Chesnaught-Mega",
+      "source": "clipboard",
+      "createdAt": "2026-04-20T01:12:29.450Z",
+      "updatedAt": "2026-04-20T01:12:29.450Z",
+      "set": {
+        "species": "Chesnaught-Mega",
+        "item": "Chesnaughtite",
+        "ability": "bulletproof",
+        "nature": "impish",
+        "level": 50,
+        "moves": [
+          "Body Press",
+          "Iron Defense",
+          "Synthesis",
+          "Knock Off"
+        ],
+        "evs": {
+          "hp": 32,
+          "atk": 0,
+          "def": 32,
+          "spa": 0,
+          "spd": 2,
+          "spe": 0
+        },
+        "ivs": {
+          "hp": 31,
+          "atk": 31,
+          "def": 31,
+          "spa": 31,
+          "spd": 31,
+          "spe": 31
+        }
+      }
+    },
+    {
+      "id": "gen9championsbssregma::greninja::choicescarf::protean::hasty::notera::hp2-spa32-spe32::atk31-def31-hp31-spa31-spd31-spe31::hydropump-liquidation-rockslide-uturn::noroles::nostyles::default",
+      "format": "gen9championsbssregma",
+      "species": "Greninja",
+      "source": "clipboard",
+      "createdAt": "2026-04-20T01:12:29.450Z",
+      "updatedAt": "2026-04-20T01:12:29.450Z",
+      "set": {
+        "species": "Greninja",
+        "item": "Choice Scarf",
+        "ability": "protean",
+        "nature": "hasty",
+        "level": 50,
+        "moves": [
+          "Hydro Pump",
+          "U-turn",
+          "Rock Slide",
+          "Liquidation"
+        ],
+        "evs": {
+          "hp": 2,
+          "atk": 0,
+          "def": 0,
+          "spa": 32,
+          "spd": 0,
+          "spe": 32
+        },
+        "ivs": {
+          "hp": 31,
+          "atk": 31,
+          "def": 31,
+          "spa": 31,
+          "spd": 31,
+          "spe": 31
+        }
+      }
     }
   ]
 }
