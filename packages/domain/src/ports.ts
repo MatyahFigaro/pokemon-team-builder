@@ -103,4 +103,5 @@ export interface TeamCodecPort {
 
 export interface SimulationPort {
   simulateMatchup(request: MatchupRequest): Promise<MatchupSummary>;
+  simulateMatchups?(requests: MatchupRequest[], options?: { concurrency?: number }): Promise<MatchupSummary[]>;
 }

@@ -1,4 +1,5 @@
 import { createRequire } from 'node:module';
+import { availableParallelism } from 'node:os';
 
 import type { MatchupRequest, MatchupSummary, PokemonSet, SimulationPort, Team } from '@pokemon/domain';
 
@@ -17,6 +18,9 @@ const STATUS_SPREAD_MOVES = new Set(['thunderwave', 'willowisp', 'toxic', 'spore
 const HAZARD_MOVES = new Set(['stealthrock', 'spikes', 'toxicspikes', 'stickyweb']);
 const PHAZING_MOVES = new Set(['roar', 'whirlwind', 'dragontail', 'circlethrow', 'haze', 'clearsmog']);
 const SCOUT_MOVES = new Set(['protect', 'substitute', 'kingsshield', 'spikyshield', 'banefulbunker']);
+const DEFAULT_MATCHUP_CONCURRENCY = Math.max(2, Math.min(6, Math.floor(availableParallelism() / 2)));
+const DEFAULT_GAME_CONCURRENCY = Math.max(1, Math.min(4, Math.floor(availableParallelism() / 3)));
+const SIM_CACHE_LIMIT = 256;
 
 interface PlayerChoiceRequest {
   wait?: boolean;
@@ -200,6 +204,49 @@ function getPredictionAccuracy(request: MatchupRequest, dex: ShowdownDexAdapter)
       moveSamples > 0 ? `Safe-click move prediction accuracy sits around ${formatPercent(move)} into the most common benchmark branches.` : null,
       switchSamples > 0 ? `Likely switch-call confidence sits around ${formatPercent(switchPrediction)} on the top preview turns.` : null,
     ]),
+  };
+}
+
+async function runWithConcurrency<T, R>(
+  values: T[],
+  concurrency: number,
+  worker: (value: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  if (values.length === 0) return [];
+
+  const limit = Math.max(1, Math.min(concurrency, values.length));
+  const results = new Array<R>(values.length);
+  let nextIndex = 0;
+
+  const runner = async () => {
+    while (true) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      if (currentIndex >= values.length) break;
+      results[currentIndex] = await worker(values[currentIndex] as T, currentIndex);
+    }
+  };
+
+  await Promise.all(Array.from({ length: limit }, () => runner()));
+  return results;
+}
+
+function createMatchupCacheKey(request: MatchupRequest): string {
+  return JSON.stringify([
+    request.format,
+    request.iterations,
+    packTeam(request.team),
+    packTeam(request.opponent),
+  ]);
+}
+
+function cloneMatchupSummary(summary: MatchupSummary): MatchupSummary {
+  return {
+    ...summary,
+    notes: [...summary.notes],
+    turnBreakdown: [...summary.turnBreakdown],
+    damageHighlights: [...summary.damageHighlights],
+    switchPredictions: [...summary.switchPredictions],
   };
 }
 
@@ -988,12 +1035,61 @@ async function runBattleStreamGame(
 
 export class ShowdownSimulationAdapter implements SimulationPort {
   private readonly dex = new ShowdownDexAdapter();
+  private readonly summaryCache = new Map<string, MatchupSummary>();
+  private readonly pendingSimulations = new Map<string, Promise<MatchupSummary>>();
+
+  private getCachedSummary(key: string): MatchupSummary | null {
+    const cached = this.summaryCache.get(key);
+    if (!cached) return null;
+
+    this.summaryCache.delete(key);
+    this.summaryCache.set(key, cached);
+    return cloneMatchupSummary(cached);
+  }
+
+  private storeCachedSummary(key: string, summary: MatchupSummary): void {
+    if (this.summaryCache.has(key)) this.summaryCache.delete(key);
+    this.summaryCache.set(key, cloneMatchupSummary(summary));
+
+    while (this.summaryCache.size > SIM_CACHE_LIMIT) {
+      const oldestKey = this.summaryCache.keys().next().value as string | undefined;
+      if (!oldestKey) break;
+      this.summaryCache.delete(oldestKey);
+    }
+  }
+
+  async simulateMatchups(requests: MatchupRequest[], options: { concurrency?: number } = {}): Promise<MatchupSummary[]> {
+    return runWithConcurrency(
+      requests,
+      options.concurrency ?? DEFAULT_MATCHUP_CONCURRENCY,
+      async (request) => this.simulateMatchup(request),
+    );
+  }
 
   async simulateMatchup(request: MatchupRequest): Promise<MatchupSummary> {
+    const key = createMatchupCacheKey(request);
+    const cached = this.getCachedSummary(key);
+    if (cached) return cached;
+
+    const pending = this.pendingSimulations.get(key);
+    if (pending) return cloneMatchupSummary(await pending);
+
+    const task = (async () => {
+      try {
+        return await this.simulateWithBattleStream(request);
+      } catch (error) {
+        return this.simulateHeuristicFallback(request, error);
+      }
+    })();
+
+    this.pendingSimulations.set(key, task);
+
     try {
-      return await this.simulateWithBattleStream(request);
-    } catch (error) {
-      return this.simulateHeuristicFallback(request, error);
+      const summary = await task;
+      this.storeCachedSummary(key, summary);
+      return cloneMatchupSummary(summary);
+    } finally {
+      this.pendingSimulations.delete(key);
     }
   }
 
@@ -1024,8 +1120,13 @@ export class ShowdownSimulationAdapter implements SimulationPort {
     const theirLeads: string[] = [];
     const gameResults: Array<{ winner: 'p1' | 'p2' | 'tie'; turns: number }> = [];
 
-    for (let index = 0; index < iterations; index += 1) {
-      const result = await runBattleStreamGame(request, this.dex, index);
+    const results = await runWithConcurrency(
+      Array.from({ length: iterations }, (_, index) => index),
+      Math.min(DEFAULT_GAME_CONCURRENCY, iterations),
+      async (index) => runBattleStreamGame(request, this.dex, index),
+    );
+
+    for (const result of results) {
       totalTurns += result.turns;
       gameResults.push({ winner: result.winner, turns: result.turns });
       if (result.ourLead) ourLeads.push(result.ourLead);

@@ -1,4 +1,4 @@
-import type { AnalysisReport, SimulationAnalysisSummary, SimulationPort, SpeciesDexPort, Team, TeamIssue, ValidationPort } from '@pokemon/domain';
+import type { AnalysisReport, MatchupRequest, SimulationAnalysisSummary, SimulationPort, SpeciesDexPort, Team, TeamIssue, ValidationPort } from '@pokemon/domain';
 import { getTopUsageNames, getTopUsageThreatNames, getUsageAnalyticsForFormat, preloadUsageAnalytics } from '@pokemon/storage';
 
 import { analyzeBssPlan } from '../analysis/bss.js';
@@ -100,6 +100,17 @@ function buildThreatSimulationTeams(team: Team, deps: AnalyzeTeamDeps, simTeams:
   });
 }
 
+async function simulateRequests(
+  simulator: NonNullable<AnalyzeTeamDeps['simulator']>,
+  requests: MatchupRequest[],
+): Promise<Array<Awaited<ReturnType<SimulationPort['simulateMatchup']>>>> {
+  if (typeof simulator.simulateMatchups === 'function') {
+    return simulator.simulateMatchups(requests, { concurrency: Math.min(4, requests.length || 1) });
+  }
+
+  return Promise.all(requests.map((request) => simulator.simulateMatchup(request)));
+}
+
 function describeSimulationPool(simulation: Pick<SimulationAnalysisSummary, 'opponentModel' | 'opponentPreview'>): string {
   const sample = simulation.opponentPreview.join(', ');
   return sample ? `${simulation.opponentModel}; sample: ${sample}` : simulation.opponentModel;
@@ -138,12 +149,15 @@ async function getSimulationAnalysis(
   }
 
   const iterationsPerOpponent = isBssLikeFormat(team.format) ? 2 : 1;
-  const summaries = await Promise.all(opponents.map((opponent) => deps.simulator?.simulateMatchup({
-    format: team.format,
-    team,
-    opponent,
-    iterations: iterationsPerOpponent,
-  })));
+  const summaries = await simulateRequests(
+    deps.simulator,
+    opponents.map((opponent) => ({
+      format: team.format,
+      team,
+      opponent,
+      iterations: iterationsPerOpponent,
+    })),
+  );
 
   const wins = summaries.reduce((sum, summary) => sum + (summary?.wins ?? 0), 0);
   const losses = summaries.reduce((sum, summary) => sum + (summary?.losses ?? 0), 0);

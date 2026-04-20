@@ -1,4 +1,4 @@
-import type { MatchupSummary, PokemonSet, SpeciesDexPort, Suggestion, Team, ValidationPort } from '@pokemon/domain';
+import type { MatchupRequest, MatchupSummary, PokemonSet, SpeciesDexPort, Suggestion, Team, ValidationPort } from '@pokemon/domain';
 import { getSpeciesUsage, getTopUsageNames, getTopUsageThreatNames, getUsageAnalyticsForFormat, getUsageWeight, preloadUsageAnalytics } from '@pokemon/storage';
 
 import { summarizeRoles } from '../analysis/roles.js';
@@ -265,6 +265,17 @@ function buildThreatSimulationTeams(
   });
 }
 
+async function simulateRequests(
+  simulator: NonNullable<AnalyzeTeamDeps['simulator']>,
+  requests: MatchupRequest[],
+): Promise<MatchupSummary[]> {
+  if (typeof simulator.simulateMatchups === 'function') {
+    return simulator.simulateMatchups(requests, { concurrency: Math.min(4, requests.length || 1) });
+  }
+
+  return Promise.all(requests.map((request) => simulator.simulateMatchup(request)));
+}
+
 async function simulateAgainstThreatPool(
   team: Team,
   opponents: Team[],
@@ -274,12 +285,15 @@ async function simulateAgainstThreatPool(
 ): Promise<{ winRate: number; notes: string[]; benchmarkLabel: string } | null> {
   if (!deps.simulator || opponents.length === 0) return null;
 
-  const summaries = await Promise.all(opponents.map((opponent) => deps.simulator?.simulateMatchup({
-    format,
-    team,
-    opponent,
-    iterations: iterationsPerOpponent,
-  })));
+  const summaries = await simulateRequests(
+    deps.simulator,
+    opponents.map((opponent) => ({
+      format,
+      team,
+      opponent,
+      iterations: iterationsPerOpponent,
+    })),
+  );
 
   const wins = summaries.reduce((sum, summary) => sum + (summary?.wins ?? 0), 0);
   const draws = summaries.reduce((sum, summary) => sum + (summary?.draws ?? 0), 0);
