@@ -65,6 +65,26 @@ function speciesFromDetails(details?: string): string {
   return (details ?? '').split(',')[0]?.trim() ?? '';
 }
 
+function parseConditionPercent(condition?: string): number {
+  const normalized = normalize(condition);
+  if (!normalized || normalized.endsWith(' fnt') || normalized === '0 fnt') return 0;
+
+  const hpPart = (condition ?? '').split(' ')[0] ?? '';
+  const [currentRaw, maxRaw] = hpPart.split('/');
+  const current = Number(currentRaw ?? Number.NaN);
+  const max = Number(maxRaw ?? Number.NaN);
+  if (Number.isFinite(current) && Number.isFinite(max) && max > 0) {
+    return current / max;
+  }
+
+  const percentMatch = hpPart.match(/^(\d+(?:\.\d+)?)%$/);
+  if (percentMatch) {
+    return Number(percentMatch[1]) / 100;
+  }
+
+  return 1;
+}
+
 function packTeam(team: Team): string {
   return Teams.pack(toShowdownTeam(team) as never);
 }
@@ -299,14 +319,19 @@ function scoreBringGroup(
 class EngineGreedyPlayer {
   private usedMega = false;
   private usedTera = false;
+  private opponentActiveSet: PokemonSet | null = null;
+  private readonly foePrefix: 'p1' | 'p2';
 
   constructor(
     private readonly stream: any,
+    private readonly playerSide: 'p1' | 'p2',
     private readonly team: Team,
     private readonly opponent: Team,
     private readonly dex: ShowdownDexAdapter,
     private readonly format: string,
-  ) {}
+  ) {
+    this.foePrefix = playerSide === 'p1' ? 'p2' : 'p1';
+  }
 
   async start(): Promise<void> {
     for await (const chunk of this.stream) {
@@ -320,8 +345,27 @@ class EngineGreedyPlayer {
     }
   }
 
+  private updateOpponentState(line: string): void {
+    if (
+      line.startsWith(`|switch|${this.foePrefix}a:`)
+      || line.startsWith(`|drag|${this.foePrefix}a:`)
+      || line.startsWith(`|replace|${this.foePrefix}a:`)
+    ) {
+      const segments = line.split('|');
+      const species = speciesFromDetails(segments[3]);
+      this.opponentActiveSet = this.opponent.members.find((member) => canonicalSpeciesId(member.species) === canonicalSpeciesId(species)) ?? null;
+      return;
+    }
+
+    if (line.startsWith(`|faint|${this.foePrefix}a:`)) {
+      this.opponentActiveSet = null;
+    }
+  }
+
   private receiveLine(line: string): void {
     if (!line.startsWith('|')) return;
+
+    this.updateOpponentState(line);
 
     const [cmd, rest] = splitFirst(line.slice(1), '|');
     if (cmd === 'request') {
@@ -340,16 +384,23 @@ class EngineGreedyPlayer {
   }
 
   private getSwitchOptions(sidePokemon: NonNullable<PlayerChoiceRequest['side']>['pokemon'], activeIndex: number, chosen: number[]) {
+    void activeIndex;
+
     return sidePokemon
       .map((pokemon, index) => ({ pokemon, slot: index + 1, set: this.team.members[index] }))
       .filter((entry) => Boolean(entry.set))
       .filter((entry) => !entry.pokemon.active)
       .filter((entry) => !entry.pokemon.condition.endsWith(' fnt'))
       .filter((entry) => !chosen.includes(entry.slot))
-      .map((entry) => ({
-        slot: entry.slot,
-        score: this.opponent.members.reduce((sum, target) => sum + scoreSetIntoTarget(entry.set as PokemonSet, target, this.dex, this.format), 0),
-      }))
+      .map((entry) => {
+        const set = entry.set as PokemonSet;
+        const activeScore = this.opponentActiveSet ? scoreSetIntoTarget(set, this.opponentActiveSet, this.dex, this.format) : 0;
+        const teamScore = this.opponent.members.reduce((sum, target) => sum + scoreSetIntoTarget(set, target, this.dex, this.format), 0);
+        return {
+          slot: entry.slot,
+          score: (activeScore * 0.8) + (teamScore * 0.2),
+        };
+      })
       .sort((left, right) => right.score - left.score);
   }
 
@@ -392,14 +443,30 @@ class EngineGreedyPlayer {
       const currentSet = this.getBestActiveSet(activeIndex, sidePokemon);
       if (!currentSet) return 'move 1';
 
+      const hpRatio = parseConditionPercent(currentPokemon.condition);
+      const matchupScore = this.opponentActiveSet ? scoreSetIntoTarget(currentSet, this.opponentActiveSet, this.dex, this.format) : 0;
+
       const moveChoices = (activeState.moves ?? [])
-        .map((move, index) => ({
-          slot: index + 1,
-          move: move.move,
-          disabled: move.disabled,
-          target: move.target ?? 'normal',
-          score: scoreMoveIntoTeam(currentSet, move.move, this.opponent, this.dex, this.format),
-        }))
+        .map((move, index) => {
+          const moveId = toId(move.move);
+          const teamScore = scoreMoveIntoTeam(currentSet, move.move, this.opponent, this.dex, this.format);
+          const targetScore = this.opponentActiveSet ? scoreSpecificMove(currentSet, move.move, this.opponentActiveSet, this.dex, this.format) : teamScore;
+          let score = this.opponentActiveSet ? ((targetScore * 0.8) + (teamScore * 0.2)) : teamScore;
+
+          if (SETUP_MOVES.has(moveId) && matchupScore >= 18 && hpRatio >= 0.6) score += 24;
+          if (RECOVERY_MOVES.has(moveId)) score += hpRatio <= 0.45 && matchupScore >= -4 ? 28 : hpRatio <= 0.65 ? 10 : -6;
+          if (PIVOT_MOVES.has(moveId) && matchupScore < 0) score += 14;
+          if (PRIORITY_MOVES.has(moveId) && targetScore >= 65) score += 10;
+          if (moveId === 'protect' && hpRatio > 0.7) score -= 10;
+
+          return {
+            slot: index + 1,
+            move: move.move,
+            disabled: move.disabled,
+            target: move.target ?? 'normal',
+            score,
+          };
+        })
         .filter((move) => !move.disabled)
         .sort((left, right) => right.score - left.score);
 
@@ -407,7 +474,7 @@ class EngineGreedyPlayer {
       const switchChoices = activeState.trapped ? [] : this.getSwitchOptions(sidePokemon, activeIndex, chosen);
       const bestSwitch = switchChoices[0];
 
-      if ((!bestMove || (bestSwitch && bestSwitch.score > bestMove.score + 18)) && bestSwitch) {
+      if ((!bestMove || (bestSwitch && matchupScore < -20 && bestSwitch.score > bestMove.score + 6) || (bestSwitch && hpRatio < 0.35 && bestSwitch.score > bestMove.score + 4)) && bestSwitch) {
         chosen.push(bestSwitch.slot);
         return `switch ${bestSwitch.slot}`;
       }
@@ -419,10 +486,10 @@ class EngineGreedyPlayer {
         choice += ' 1';
       }
 
-      if (activeState.canMegaEvo && !this.usedMega) {
+      if (activeState.canMegaEvo && !this.usedMega && (bestMove.score >= 95 || matchupScore > 8)) {
         this.usedMega = true;
         choice += ' mega';
-      } else if (activeState.canTerastallize && !this.usedTera && bestMove.score >= 140) {
+      } else if (activeState.canTerastallize && !this.usedTera && bestMove.score >= 120) {
         this.usedTera = true;
         choice += ' terastallize';
       }
@@ -440,8 +507,8 @@ async function runBattleStreamGame(
   iteration: number,
 ): Promise<{ winner: 'p1' | 'p2' | 'tie'; turns: number; ourLead?: string; theirLead?: string }> {
   const streams = getPlayerStreams(new BattleStream());
-  const p1 = new EngineGreedyPlayer(streams.p1, request.team, request.opponent, dex, request.format);
-  const p2 = new EngineGreedyPlayer(streams.p2, request.opponent, request.team, dex, request.format);
+  const p1 = new EngineGreedyPlayer(streams.p1, 'p1', request.team, request.opponent, dex, request.format);
+  const p2 = new EngineGreedyPlayer(streams.p2, 'p2', request.opponent, request.team, dex, request.format);
 
   const p1Task = p1.start();
   const p2Task = p2.start();

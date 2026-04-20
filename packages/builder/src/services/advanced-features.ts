@@ -1163,6 +1163,10 @@ function selectDiverseRecommendations(
     const repeatedTags = candidate.tags.filter((tag) => (tagCounts.get(tag) ?? 0) > 0);
     adjustment -= Math.max(0, repeatedTags.length - 1) * 3;
 
+    const repeatedTypeTags = candidate.tags.filter((tag) => tag.startsWith('type:') && (tagCounts.get(tag) ?? 0) > 0);
+    adjustment -= repeatedTypeTags.length * 8;
+    if (candidate.tags.some((tag) => tag.startsWith('type:') && (tagCounts.get(tag) ?? 0) >= 2)) adjustment -= 1000;
+
     const duplicateItem = candidate.tags.some((tag) => tag.startsWith('item:') && (tagCounts.get(tag) ?? 0) >= 1);
     if (duplicateItem) adjustment -= 1000;
     if (candidate.tags.includes('mega') && (tagCounts.get('mega') ?? 0) >= maxMegaCount) adjustment -= 1000;
@@ -1203,6 +1207,7 @@ function canSelectCandidate(
   maxHazardCount: number,
 ): boolean {
   if (candidate.tags.some((tag) => tag.startsWith('item:') && (tagCounts.get(tag) ?? 0) >= 1)) return false;
+  if (candidate.tags.some((tag) => tag.startsWith('type:') && (tagCounts.get(tag) ?? 0) >= 2)) return false;
   if (candidate.tags.includes('mega') && (tagCounts.get('mega') ?? 0) >= maxMegaCount) return false;
   if (candidate.tags.includes('hazard') && (tagCounts.get('hazard') ?? 0) >= maxHazardCount) return false;
   return true;
@@ -1329,6 +1334,19 @@ export async function buildWithConstraints(constraints: BuildConstraints, deps: 
       const key = `item:${toId(member.item)}`;
       initialTagCounts.set(key, (initialTagCounts.get(key) ?? 0) + 1);
     }
+
+    for (const type of deps.dex.getSpecies(member.species)?.types ?? []) {
+      const key = `type:${toId(type)}`;
+      initialTagCounts.set(key, (initialTagCounts.get(key) ?? 0) + 1);
+    }
+
+    if (isMegaSet(member, deps.dex)) {
+      initialTagCounts.set('mega', (initialTagCounts.get('mega') ?? 0) + 1);
+    }
+
+    if (hasConfiguredHazardMove(member)) {
+      initialTagCounts.set('hazard', (initialTagCounts.get('hazard') ?? 0) + 1);
+    }
   }
   const maxRecommendedMegas = Math.max(0, 2 - megaAnchors);
   const maxRecommendedHazards = Math.max(0, 1 - hazardAnchors);
@@ -1440,6 +1458,7 @@ export async function buildWithConstraints(constraints: BuildConstraints, deps: 
         megaCandidate ? 'mega' : null,
         ...getHazardTagsFromPreview(preview),
         ...getItemTagsFromPreview(preview),
+        ...species.types.map((type) => `type:${toId(type)}`),
         species.baseStats.spe >= 100 || hasPriority ? 'speed' : null,
         hasPivot ? 'pivot' : null,
         hasSupport ? 'utility' : null,
@@ -1492,6 +1511,7 @@ export async function buildWithConstraints(constraints: BuildConstraints, deps: 
             'The BSS teambuilding guide is now reflected in scoring: bring-3 shells, safe leads or pivots, speed control or priority, and matchup patching matter more than generic hazards or same-type stacking.',
             'The builder also avoids stuffing the roster with too many Mega options; at most two Mega candidates are kept, and they still need real synergy with the rest of the shell.',
             'It also avoids overstacking hazard setters, so field pressure does not crowd out better bring-3 partners.',
+            'Type stacking is now capped much more aggressively as well, so the shell should stay structurally cleaner.',
             deps.simulator ? 'Top shortlist options are now iterated through bring-3-aware Showdown matchup sims against the current live threat cluster until the shell clears or approaches the target win-rate band.' : undefined,
             iterativeSelection.projectedWinRate
               ? (iterativeSelection.projectedWinRate >= (isBssLikeFormat(constraints.format) ? 0.58 : 0.55)

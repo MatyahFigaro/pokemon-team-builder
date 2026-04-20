@@ -458,7 +458,9 @@ function getValidatedUsageSet(
 
       const result = validator.validateSet(set, format);
       if (isPromiseLike<ValidationSetResult>(result)) continue;
-      if (result.valid) return result.normalizedSet ?? set;
+
+      const normalized = result.normalizedSet ?? set;
+      if (result.valid && passesSetConsistencyGate(normalized, dex, format)) return normalized;
     }
   }
 
@@ -614,9 +616,13 @@ function getValidatedManualSet(
   options: PreviewOptions = {},
 ): PokemonSet | null {
   for (const record of getManualSetCandidates(speciesName, format, dex, options)) {
+    if (!passesSetConsistencyGate(record.set, dex, format)) continue;
+
     const result = validator.validateSet(record.set, format);
     if (isPromiseLike<ValidationSetResult>(result)) continue;
-    if (result.valid) return result.normalizedSet ?? record.set;
+
+    const normalized = result.normalizedSet ?? record.set;
+    if (result.valid && passesSetConsistencyGate(normalized, dex, format)) return normalized;
   }
 
   return null;
@@ -626,7 +632,7 @@ function passesPreviewQualityGate(speciesName: string, moves: string[], dex: Spe
   const species = dex.getSpecies(speciesName);
   if (!species) return false;
 
-  const preferredCategory = getPreferredCategory(speciesName, dex);
+  const preferredCategory = getPreferredCategory(speciesName, dex, format);
   const moveInfos = getMoveInfos(moves, dex);
   const damagingMoves = moveInfos.filter((move) => move.category !== 'Status');
   const badMoves = moveInfos.filter((move) => isLowQualityFallbackMove(move));
@@ -636,14 +642,41 @@ function passesPreviewQualityGate(speciesName: string, moves: string[], dex: Spe
   const averageScore = damagingMoves.length
     ? damagingMoves.reduce((sum, move) => sum + scoreOffensiveMove(move, speciesName, dex, preferredCategory), 0) / damagingMoves.length
     : 0;
+  const bulky = shouldUseBulkySpread(speciesName, dex, moves, {}, format);
 
   if (moves.length < 4) return false;
   if (badMoves.length > 0) return false;
   if (weakCoverage.length > 0) return false;
   if (sameCategoryHits.length < 1) return false;
+  if (!bulky && damagingMoves.length >= 3 && sameCategoryHits.length < 2) return false;
   if (stabHits.length < 1) return false;
   if (averageScore < 55) return false;
-  if (damagingMoves.length < 2 && !shouldUseBulkySpread(speciesName, dex, moves, {}, format)) return false;
+  if (damagingMoves.length < 2 && !bulky) return false;
+
+  return true;
+}
+
+function passesSetConsistencyGate(set: PokemonSet, dex: SpeciesDexPort, format: FormatId): boolean {
+  if (!passesPreviewQualityGate(set.species, set.moves, dex, format)) return false;
+
+  const moveInfos = getMoveInfos(set.moves, dex);
+  const damagingMoves = moveInfos.filter((move) => move.category !== 'Status');
+  const statusMoves = moveInfos.filter((move) => move.category === 'Status');
+  const preferredCategory = getPreferredCategory(set.species, dex, format);
+  const sameCategoryHits = damagingMoves.filter((move) => move.category === preferredCategory);
+  const setupMoveCount = moveInfos.filter((move) => isSetupMoveForCategory(move, preferredCategory)).length;
+  const recoveryMoveCount = moveInfos.filter((move) => RECOVERY_MOVE_IDS.has(move.id)).length;
+  const itemId = toId(set.item);
+  const bulky = shouldUseBulkySpread(set.species, dex, set.moves, {}, format);
+
+  if (!bulky && statusMoves.length > 1) return false;
+  if (!bulky && damagingMoves.length >= 3 && sameCategoryHits.length < 2) return false;
+  if (setupMoveCount > 1) return false;
+
+  if (itemId === 'assaultvest' && statusMoves.length > 0) return false;
+  if (['choiceband', 'choicespecs', 'choicescarf'].includes(itemId) && (statusMoves.length > 0 || setupMoveCount > 0 || recoveryMoveCount > 0)) {
+    return false;
+  }
 
   return true;
 }
@@ -718,7 +751,10 @@ export function getCompetitiveSet(
     }
 
     if (result.valid) {
-      return result.normalizedSet ?? set;
+      const normalized = result.normalizedSet ?? set;
+      if (passesSetConsistencyGate(normalized, dex, format)) {
+        return normalized;
+      }
     }
   }
 

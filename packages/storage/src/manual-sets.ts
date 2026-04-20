@@ -289,3 +289,35 @@ export function importManualSets(
   saveRegistry(registry);
   return { saved, path: MANUAL_SET_PATH };
 }
+
+export function deleteManualSets(
+  options: { id?: string; format?: string; species?: string; label?: string; all?: boolean } = {},
+): { removed: number; path: string } {
+  const hasFilter = Boolean(options.id || options.format || options.species || options.label || options.all);
+  if (!hasFilter) {
+    return { removed: 0, path: MANUAL_SET_PATH };
+  }
+
+  const id = toId(options.id);
+  const formatId = toId(options.format);
+  const speciesId = toId(options.species);
+  const labelId = toId(options.label);
+  const registry = loadRegistry();
+
+  const filtered = registry.sets.filter((record) => {
+    if (id) return toId(record.id) !== id;
+
+    const matchesFormat = formatId ? toId(record.format) === formatId : true;
+    const matchesSpecies = speciesId ? (toId(record.species) === speciesId || toId(record.set.species) === speciesId) : true;
+    const matchesLabel = labelId ? toId(record.label) === labelId : true;
+
+    return !(matchesFormat && matchesSpecies && matchesLabel);
+  });
+
+  const removed = registry.sets.length - filtered.length;
+  if (removed > 0) {
+    saveRegistry({ version: 1, sets: filtered });
+  }
+
+  return { removed, path: MANUAL_SET_PATH };
+}

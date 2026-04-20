@@ -1,6 +1,6 @@
 import type { Command } from 'commander';
 
-import { getManualSetsPath, importManualSets, listManualSets } from '@pokemon/storage';
+import { deleteManualSets, getManualSetsPath, importManualSets, listManualSets } from '@pokemon/storage';
 
 import { createService, readClipboardText, readTeamText } from '../shared.js';
 
@@ -73,13 +73,32 @@ export function registerManualSetsCommand(program: Command): void {
         const moves = record.set.moves.join(' / ');
         const label = record.label ? ` [${record.label}]` : '';
         console.log(`- ${record.format}: ${record.species}${label}`);
+        console.log(`  ID: ${record.id}`);
         console.log(`  ${record.set.item ? `${record.set.species} @ ${record.set.item}` : record.set.species}`);
         if (record.set.ability) console.log(`  Ability: ${record.set.ability}`);
         if (record.set.nature) console.log(`  Nature: ${record.set.nature}`);
         if (record.roles?.length) console.log(`  Roles: ${record.roles.join(', ')}`);
         if (record.styles?.length) console.log(`  Styles: ${record.styles.join(', ')}`);
+        if (record.updatedAt) console.log(`  Updated: ${record.updatedAt}`);
         console.log(`  Moves: ${moves}`);
       }
+    });
+
+  manualSets
+    .command('remove')
+    .description('Remove manual sets by id or by filter.')
+    .option('--id <id>', 'Delete one exact stored set id')
+    .option('--format <format>', 'Filter by format')
+    .option('--species <species>', 'Filter by species')
+    .option('--label <label>', 'Filter by label')
+    .option('--all', 'Remove every matching record')
+    .action((options: { id?: string; format?: string; species?: string; label?: string; all?: boolean }) => {
+      if (!options.id && !options.format && !options.species && !options.label && !options.all) {
+        throw new Error('Provide --id or at least one filter such as --species or --format.');
+      }
+
+      const result = deleteManualSets(options);
+      console.log(`Removed ${result.removed} set(s) from ${result.path}`);
     });
 
   manualSets
