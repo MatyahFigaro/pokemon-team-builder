@@ -1563,42 +1563,6 @@
       }
     },
     {
-      "id": "gen9championsbssregma::dragapult::choicescarf::clearbody::nonature::notera::atk32-spa32-spe2::atk31-def31-hp31-spa31-spd31-spe31::dragondarts-flamethrower-thunderbolt-uturn::noroles::nostyles::default",
-      "format": "gen9championsbssregma",
-      "species": "Dragapult",
-      "source": "clipboard",
-      "createdAt": "2026-04-19T18:34:13.764Z",
-      "updatedAt": "2026-04-19T18:34:13.764Z",
-      "set": {
-        "species": "Dragapult",
-        "item": "Choice Scarf",
-        "ability": "clearbody",
-        "level": 50,
-        "moves": [
-          "Dragon Darts",
-          "Thunderbolt",
-          "U-turn",
-          "Flamethrower"
-        ],
-        "evs": {
-          "hp": 0,
-          "atk": 32,
-          "def": 0,
-          "spa": 32,
-          "spd": 0,
-          "spe": 2
-        },
-        "ivs": {
-          "hp": 31,
-          "atk": 31,
-          "def": 31,
-          "spa": 31,
-          "spd": 31,
-          "spe": 31
-        }
-      }
-    },
-    {
       "id": "gen9championsbssregma::espathra::leftovers::speedboost::nonature::notera::def32-hp2-spd32::atk31-def31-hp31-spa31-spd31-spe31::batonpass-calmmind-dazzlinggleam-protect::noroles::nostyles::default",
       "format": "gen9championsbssregma",
       "species": "Espathra",
