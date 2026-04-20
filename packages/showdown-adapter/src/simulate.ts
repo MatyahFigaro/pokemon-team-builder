@@ -13,6 +13,10 @@ const PRIORITY_MOVES = new Set(['extremespeed', 'suckerpunch', 'aquajet', 'icesh
 const RECOVERY_MOVES = new Set(['recover', 'roost', 'slackoff', 'softboiled', 'moonlight', 'morningsun', 'synthesis', 'rest']);
 const SETUP_MOVES = new Set(['swordsdance', 'dragondance', 'nastyplot', 'calmmind', 'bulkup', 'agility', 'quiverdance', 'trailblaze']);
 const PIVOT_MOVES = new Set(['uturn', 'voltswitch', 'partingshot', 'flipturn', 'teleport', 'chillyreception']);
+const STATUS_SPREAD_MOVES = new Set(['thunderwave', 'willowisp', 'toxic', 'spore', 'sleeppowder', 'stunspore', 'glare', 'nuzzle', 'yawn']);
+const HAZARD_MOVES = new Set(['stealthrock', 'spikes', 'toxicspikes', 'stickyweb']);
+const PHAZING_MOVES = new Set(['roar', 'whirlwind', 'dragontail', 'circlethrow', 'haze', 'clearsmog']);
+const SCOUT_MOVES = new Set(['protect', 'substitute', 'kingsshield', 'spikyshield', 'banefulbunker']);
 
 interface PlayerChoiceRequest {
   wait?: boolean;
@@ -83,6 +87,97 @@ function parseConditionPercent(condition?: string): number {
   }
 
   return 1;
+}
+
+function sumPositiveBoosts(boosts: Record<string, number>): number {
+  return Object.values(boosts).reduce((sum, value) => sum + (value > 0 ? value : 0), 0);
+}
+
+function pickRankedOption<T extends { score: number }>(
+  options: T[],
+  nextRandom: () => number,
+  slack = 10,
+): T | undefined {
+  if (options.length === 0) return undefined;
+  if (options.length === 1) return options[0];
+
+  const bestScore = options[0]?.score ?? 0;
+  const viable = options.filter((option, index) => index < 3 && option.score >= bestScore - slack);
+  if (viable.length <= 1) return viable[0] ?? options[0];
+
+  const weights = viable.map((option, index) => Math.max(1, option.score - (bestScore - slack) + (viable.length - index)));
+  const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+  let target = nextRandom() * totalWeight;
+
+  for (let index = 0; index < viable.length; index += 1) {
+    target -= weights[index] ?? 0;
+    if (target <= 0) return viable[index];
+  }
+
+  return viable[0] ?? options[0];
+}
+
+type TeamArchetype = 'hyper-offense' | 'balance' | 'stall' | 'trick-room' | 'rain' | 'sun';
+
+function scoreMemberStrategicValue(
+  set: PokemonSet,
+  dex: ShowdownDexAdapter,
+  format: string,
+): number {
+  const profile = dex.getBattleProfile(set, format);
+  if (!profile) return 60;
+
+  const offense = Math.max(profile.baseStats.atk, profile.baseStats.spa);
+  const bulk = profile.baseStats.hp + profile.baseStats.def + profile.baseStats.spd;
+  let score = offense * 0.28 + profile.baseStats.spe * 0.22 + bulk * 0.05;
+
+  if (hasTaggedMove(set, SETUP_MOVES)) score += 18;
+  if (hasTaggedMove(set, PRIORITY_MOVES)) score += 7;
+  if (hasTaggedMove(set, RECOVERY_MOVES)) score += 6;
+  if (hasTaggedMove(set, PIVOT_MOVES)) score += 5;
+  if (set.species.includes('-Mega') || /ite$/i.test(set.item ?? '')) score += 8;
+
+  return score;
+}
+
+function detectTeamArchetype(team: Team, dex: ShowdownDexAdapter, format: string): TeamArchetype {
+  let fastCount = 0;
+  let bulkyCount = 0;
+  let setupCount = 0;
+  let recoveryCount = 0;
+  let trickRoomCount = 0;
+  let rainCount = 0;
+  let sunCount = 0;
+  let totalSpeed = 0;
+
+  for (const member of team.members) {
+    const profile = dex.getBattleProfile(member, format);
+    if (!profile) continue;
+
+    const speed = profile.baseStats.spe;
+    const offense = Math.max(profile.baseStats.atk, profile.baseStats.spa);
+    const bulk = profile.baseStats.hp + profile.baseStats.def + profile.baseStats.spd;
+    const abilityId = toId(member.ability);
+    const moveIds = new Set(member.moves.map((move) => toId(move)));
+
+    totalSpeed += speed;
+    if (speed >= 100 || hasTaggedMove(member, PRIORITY_MOVES)) fastCount += 1;
+    if (bulk >= 260) bulkyCount += 1;
+    if (offense >= 115 || hasTaggedMove(member, SETUP_MOVES)) setupCount += 1;
+    if (hasTaggedMove(member, RECOVERY_MOVES)) recoveryCount += 1;
+    if (moveIds.has('trickroom')) trickRoomCount += 1;
+    if (abilityId === 'drizzle' || abilityId === 'swiftswim' || moveIds.has('raindance')) rainCount += 1;
+    if (abilityId === 'drought' || abilityId === 'chlorophyll' || abilityId === 'protosynthesis' || moveIds.has('sunnyday')) sunCount += 1;
+  }
+
+  const averageSpeed = team.members.length ? totalSpeed / team.members.length : 0;
+
+  if (rainCount >= 2) return 'rain';
+  if (sunCount >= 2) return 'sun';
+  if (trickRoomCount >= 1 && averageSpeed <= 85) return 'trick-room';
+  if (recoveryCount >= 2 && bulkyCount >= 2 && setupCount <= Math.max(1, team.members.length / 2)) return 'stall';
+  if (fastCount + setupCount >= Math.max(3, team.members.length + 1) && recoveryCount <= 1) return 'hyper-offense';
+  return 'balance';
 }
 
 function packTeam(team: Team): string {
@@ -321,6 +416,13 @@ class EngineGreedyPlayer {
   private usedTera = false;
   private opponentActiveSet: PokemonSet | null = null;
   private readonly foePrefix: 'p1' | 'p2';
+  private currentTurn = 0;
+  private selfBoosts: Record<string, number> = {};
+  private foeBoosts: Record<string, number> = {};
+  private foeStatus: string | undefined;
+  private rngState: number;
+  private readonly ourArchetype: TeamArchetype;
+  private readonly opponentArchetype: TeamArchetype;
 
   constructor(
     private readonly stream: any,
@@ -329,8 +431,17 @@ class EngineGreedyPlayer {
     private readonly opponent: Team,
     private readonly dex: ShowdownDexAdapter,
     private readonly format: string,
+    seed = 1,
   ) {
     this.foePrefix = playerSide === 'p1' ? 'p2' : 'p1';
+    this.rngState = (seed + (playerSide === 'p1' ? 11 : 29)) >>> 0;
+    this.ourArchetype = detectTeamArchetype(team, dex, format);
+    this.opponentArchetype = detectTeamArchetype(opponent, dex, format);
+  }
+
+  private nextRandom(): number {
+    this.rngState = ((1664525 * this.rngState) + 1013904223) >>> 0;
+    return this.rngState / 0x100000000;
   }
 
   async start(): Promise<void> {
@@ -346,6 +457,11 @@ class EngineGreedyPlayer {
   }
 
   private updateOpponentState(line: string): void {
+    if (line.startsWith('|turn|')) {
+      this.currentTurn = Number(line.split('|')[2] ?? this.currentTurn);
+      return;
+    }
+
     if (
       line.startsWith(`|switch|${this.foePrefix}a:`)
       || line.startsWith(`|drag|${this.foePrefix}a:`)
@@ -354,11 +470,56 @@ class EngineGreedyPlayer {
       const segments = line.split('|');
       const species = speciesFromDetails(segments[3]);
       this.opponentActiveSet = this.opponent.members.find((member) => canonicalSpeciesId(member.species) === canonicalSpeciesId(species)) ?? null;
+      this.foeBoosts = {};
+      this.foeStatus = undefined;
+      return;
+    }
+
+    if (
+      line.startsWith(`|switch|${this.playerSide}a:`)
+      || line.startsWith(`|drag|${this.playerSide}a:`)
+      || line.startsWith(`|replace|${this.playerSide}a:`)
+    ) {
+      this.selfBoosts = {};
+      return;
+    }
+
+    if (line.startsWith(`|-status|${this.foePrefix}a:`)) {
+      this.foeStatus = line.split('|')[3] ?? this.foeStatus;
+      return;
+    }
+
+    if (line.startsWith(`|-curestatus|${this.foePrefix}a:`)) {
+      this.foeStatus = undefined;
+      return;
+    }
+
+    if (line.startsWith(`|-boost|${this.playerSide}a:`) || line.startsWith(`|-unboost|${this.playerSide}a:`)) {
+      const segments = line.split('|');
+      const stat = segments[3] ?? '';
+      const amount = Number(segments[4] ?? 0) * (line.startsWith('|-unboost|') ? -1 : 1);
+      this.selfBoosts[stat] = (this.selfBoosts[stat] ?? 0) + amount;
+      return;
+    }
+
+    if (line.startsWith(`|-boost|${this.foePrefix}a:`) || line.startsWith(`|-unboost|${this.foePrefix}a:`)) {
+      const segments = line.split('|');
+      const stat = segments[3] ?? '';
+      const amount = Number(segments[4] ?? 0) * (line.startsWith('|-unboost|') ? -1 : 1);
+      this.foeBoosts[stat] = (this.foeBoosts[stat] ?? 0) + amount;
+      return;
+    }
+
+    if (line.startsWith('|-clearallboost|')) {
+      this.selfBoosts = {};
+      this.foeBoosts = {};
       return;
     }
 
     if (line.startsWith(`|faint|${this.foePrefix}a:`)) {
       this.opponentActiveSet = null;
+      this.foeBoosts = {};
+      this.foeStatus = undefined;
     }
   }
 
@@ -394,11 +555,18 @@ class EngineGreedyPlayer {
       .filter((entry) => !chosen.includes(entry.slot))
       .map((entry) => {
         const set = entry.set as PokemonSet;
+        const hpRatio = parseConditionPercent(entry.pokemon.condition);
+        const strategicValue = scoreMemberStrategicValue(set, this.dex, this.format);
         const activeScore = this.opponentActiveSet ? scoreSetIntoTarget(set, this.opponentActiveSet, this.dex, this.format) : 0;
         const teamScore = this.opponent.members.reduce((sum, target) => sum + scoreSetIntoTarget(set, target, this.dex, this.format), 0);
+        let score = (activeScore * 0.8) + (teamScore * 0.2) + (hpRatio * 12);
+
+        if (strategicValue >= 95 && hpRatio < 0.45) score -= 6;
+        if (strategicValue < 75 && hpRatio < 0.35) score += 2;
+
         return {
           slot: entry.slot,
-          score: (activeScore * 0.8) + (teamScore * 0.2),
+          score,
         };
       })
       .sort((left, right) => right.score - left.score);
@@ -424,7 +592,7 @@ class EngineGreedyPlayer {
       const choices = request.forceSwitch.map((mustSwitch, index) => {
         if (!mustSwitch) return 'pass';
         const switches = this.getSwitchOptions(sidePokemon, index, chosen);
-        const target = switches[0]?.slot;
+        const target = pickRankedOption(switches, () => this.nextRandom(), 8)?.slot;
         if (!target) return 'pass';
         chosen.push(target);
         return `switch ${target}`;
@@ -445,6 +613,9 @@ class EngineGreedyPlayer {
 
       const hpRatio = parseConditionPercent(currentPokemon.condition);
       const matchupScore = this.opponentActiveSet ? scoreSetIntoTarget(currentSet, this.opponentActiveSet, this.dex, this.format) : 0;
+      const selfBoostTotal = sumPositiveBoosts(this.selfBoosts);
+      const foeBoostTotal = sumPositiveBoosts(this.foeBoosts);
+      const currentValue = scoreMemberStrategicValue(currentSet, this.dex, this.format);
 
       const moveChoices = (activeState.moves ?? [])
         .map((move, index) => {
@@ -453,11 +624,81 @@ class EngineGreedyPlayer {
           const targetScore = this.opponentActiveSet ? scoreSpecificMove(currentSet, move.move, this.opponentActiveSet, this.dex, this.format) : teamScore;
           let score = this.opponentActiveSet ? ((targetScore * 0.8) + (teamScore * 0.2)) : teamScore;
 
-          if (SETUP_MOVES.has(moveId) && matchupScore >= 18 && hpRatio >= 0.6) score += 24;
-          if (RECOVERY_MOVES.has(moveId)) score += hpRatio <= 0.45 && matchupScore >= -4 ? 28 : hpRatio <= 0.65 ? 10 : -6;
-          if (PIVOT_MOVES.has(moveId) && matchupScore < 0) score += 14;
+          if (SETUP_MOVES.has(moveId)) {
+            if (selfBoostTotal >= 2) score -= 22;
+            else if (matchupScore >= 18 && hpRatio >= 0.6) score += 24;
+            else if (hpRatio <= 0.5) score -= 12;
+          }
+
+          if (RECOVERY_MOVES.has(moveId)) {
+            score += hpRatio <= 0.45 && matchupScore >= -4 ? 28 : hpRatio <= 0.65 ? 10 : -8;
+            if (currentValue >= 90 && selfBoostTotal > 0) score += 8;
+          }
+
+          if (PIVOT_MOVES.has(moveId)) {
+            score += matchupScore < 0 ? 16 : 6;
+          }
+
           if (PRIORITY_MOVES.has(moveId) && targetScore >= 65) score += 10;
-          if (moveId === 'protect' && hpRatio > 0.7) score -= 10;
+
+          if (STATUS_SPREAD_MOVES.has(moveId)) {
+            score += this.foeStatus ? -18 : matchupScore >= -6 ? 12 : 4;
+          }
+
+          if (PHAZING_MOVES.has(moveId) && foeBoostTotal >= 2) {
+            score += 26;
+          }
+
+          if (HAZARD_MOVES.has(moveId)) {
+            score += isBssLikeFormat(this.format)
+              ? (this.currentTurn <= 1 && matchupScore > 8 ? 4 : -12)
+              : (this.currentTurn <= 2 && matchupScore >= 0 ? 8 : 1);
+          }
+
+          if (SCOUT_MOVES.has(moveId)) {
+            score += hpRatio < 0.35 ? 6 : -10;
+          }
+
+          if (this.opponentArchetype === 'hyper-offense') {
+            if (PRIORITY_MOVES.has(moveId)) score += 8;
+            if (SETUP_MOVES.has(moveId) && matchupScore < 20) score -= 8;
+            if (HAZARD_MOVES.has(moveId)) score -= 8;
+            if (RECOVERY_MOVES.has(moveId) && hpRatio > 0.45) score -= 6;
+          }
+
+          if (this.opponentArchetype === 'stall') {
+            if (SETUP_MOVES.has(moveId)) score += 10;
+            if (STATUS_SPREAD_MOVES.has(moveId)) score += 6;
+            if (SCOUT_MOVES.has(moveId)) score -= 6;
+          }
+
+          if (this.opponentArchetype === 'trick-room') {
+            if (moveId === 'agility' || moveId === 'trailblaze') score -= 16;
+            if (PHAZING_MOVES.has(moveId) || STATUS_SPREAD_MOVES.has(moveId)) score += 10;
+            if (PRIORITY_MOVES.has(moveId)) score += 5;
+          }
+
+          if (this.opponentArchetype === 'rain' || this.opponentArchetype === 'sun') {
+            if (STATUS_SPREAD_MOVES.has(moveId)) score += 6;
+          }
+
+          if (this.ourArchetype === 'hyper-offense') {
+            if (SETUP_MOVES.has(moveId)) score += 5;
+            if (RECOVERY_MOVES.has(moveId) && hpRatio > 0.45) score -= 6;
+          }
+
+          if (this.ourArchetype === 'stall' || this.ourArchetype === 'balance') {
+            if (PIVOT_MOVES.has(moveId)) score += 4;
+            if (RECOVERY_MOVES.has(moveId) && hpRatio <= 0.6) score += 4;
+          }
+
+          if (!SETUP_MOVES.has(moveId) && !RECOVERY_MOVES.has(moveId) && !STATUS_SPREAD_MOVES.has(moveId) && !HAZARD_MOVES.has(moveId) && currentValue < 75 && hpRatio < 0.3) {
+            score += 8;
+          }
+
+          if ((STATUS_SPREAD_MOVES.has(moveId) || HAZARD_MOVES.has(moveId)) && currentValue >= 90 && hpRatio < 0.5) {
+            score -= 10;
+          }
 
           return {
             slot: index + 1,
@@ -470,11 +711,15 @@ class EngineGreedyPlayer {
         .filter((move) => !move.disabled)
         .sort((left, right) => right.score - left.score);
 
-      const bestMove = moveChoices[0];
+      const bestMove = pickRankedOption(moveChoices, () => this.nextRandom(), 10);
       const switchChoices = activeState.trapped ? [] : this.getSwitchOptions(sidePokemon, activeIndex, chosen);
-      const bestSwitch = switchChoices[0];
+      const bestSwitch = pickRankedOption(switchChoices, () => this.nextRandom(), 8);
 
-      if ((!bestMove || (bestSwitch && matchupScore < -20 && bestSwitch.score > bestMove.score + 6) || (bestSwitch && hpRatio < 0.35 && bestSwitch.score > bestMove.score + 4)) && bestSwitch) {
+      if ((!bestMove
+        || (bestSwitch && matchupScore < -20 && bestSwitch.score > bestMove.score + 6)
+        || (bestSwitch && hpRatio < 0.35 && currentValue >= 90 && bestSwitch.score > bestMove.score - 2)
+        || (bestSwitch && foeBoostTotal >= 2 && bestSwitch.score > bestMove.score)
+        || (bestSwitch && selfBoostTotal > 0 && currentValue >= 95 && hpRatio < 0.45 && bestSwitch.score > bestMove.score - 1)) && bestSwitch) {
         chosen.push(bestSwitch.slot);
         return `switch ${bestSwitch.slot}`;
       }
@@ -507,8 +752,8 @@ async function runBattleStreamGame(
   iteration: number,
 ): Promise<{ winner: 'p1' | 'p2' | 'tie'; turns: number; ourLead?: string; theirLead?: string }> {
   const streams = getPlayerStreams(new BattleStream());
-  const p1 = new EngineGreedyPlayer(streams.p1, 'p1', request.team, request.opponent, dex, request.format);
-  const p2 = new EngineGreedyPlayer(streams.p2, 'p2', request.opponent, request.team, dex, request.format);
+  const p1 = new EngineGreedyPlayer(streams.p1, 'p1', request.team, request.opponent, dex, request.format, ((iteration + 1) * 97));
+  const p2 = new EngineGreedyPlayer(streams.p2, 'p2', request.opponent, request.team, dex, request.format, ((iteration + 1) * 193));
 
   const p1Task = p1.start();
   const p2Task = p2.start();
@@ -616,10 +861,13 @@ export class ShowdownSimulationAdapter implements SimulationPort {
     const mainThreat = pickBring(request.opponent, request.team, this.dex, request.format, 1)[0];
     const averageTurns = totalTurns / Math.max(1, iterations);
     const winRate = (wins + (draws * 0.5)) / iterations;
+    const ourArchetype = detectTeamArchetype(request.team, this.dex, request.format);
+    const opponentArchetype = detectTeamArchetype(request.opponent, this.dex, request.format);
 
     const notes = uniqueStrings([
       spotlight ? `${spotlight.species} showed the cleanest engine-backed line from preview.` : null,
       mainThreat ? `${mainThreat.species} was the opposing slot demanding the most respect in battle.` : null,
+      `The sim read this as ${ourArchetype} into opposing ${opponentArchetype}.`,
       ourLeads[0] ? `Most stable opener from the sim: ${ourLeads[0]}.` : null,
       theirLeads[0] ? `Most common opposing lead in sim: ${theirLeads[0]}.` : null,
       averageTurns <= 6
@@ -675,10 +923,13 @@ export class ShowdownSimulationAdapter implements SimulationPort {
     const spotlight = pickBring(request.team, request.opponent, this.dex, request.format, 1)[0];
     const mainThreat = pickBring(request.opponent, request.team, this.dex, request.format, 1)[0];
     const winRate = (wins + (draws * 0.5)) / iterations;
+    const ourArchetype = detectTeamArchetype(request.team, this.dex, request.format);
+    const opponentArchetype = detectTeamArchetype(request.opponent, this.dex, request.format);
 
     const notes = uniqueStrings([
       spotlight ? `${spotlight.species} still shows the cleanest preview line.` : null,
       mainThreat ? `${mainThreat.species} is still the opposing slot demanding the most respect.` : null,
+      `The heuristic model read this as ${ourArchetype} into opposing ${opponentArchetype}.`,
       'Engine-backed battle rollout was unavailable here, so the simulator fell back to matchup heuristics.',
       error instanceof Error ? `Fallback reason: ${error.message}` : null,
       winRate >= 0.6

@@ -215,6 +215,32 @@ function uniqueStrings(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean)));
 }
 
+function getCombinations<T>(values: T[], size: number): T[][] {
+  if (size <= 0) return [[]];
+  if (size >= values.length) return [values.slice()];
+
+  const combinations: T[][] = [];
+  const current: T[] = [];
+
+  const walk = (start: number) => {
+    if (current.length === size) {
+      combinations.push([...current]);
+      return;
+    }
+
+    for (let index = start; index <= values.length - (size - current.length); index += 1) {
+      const value = values[index];
+      if (value === undefined) continue;
+      current.push(value);
+      walk(index + 1);
+      current.pop();
+    }
+  };
+
+  walk(0);
+  return combinations;
+}
+
 function buildThreatSimulationTeams(format: string, dex: SpeciesDexPort, validator: ValidationPort): Team[] {
   const snapshot = getUsageAnalyticsForFormat(format);
   const lineups: string[][] = [];
@@ -793,6 +819,74 @@ function scoreBringCandidate(
   return { score, reasons: Array.from(new Set(reasons)) };
 }
 
+function scoreBringLine(
+  members: Team['members'],
+  opponent: Team,
+  dex: SpeciesDexPort,
+  format: string,
+  roleMap: Map<string, string[]>,
+): { score: number; reasons: string[]; ordered: Team['members'] } {
+  const evaluations = members.map((member) => {
+    const roles = roleMap.get(memberName(member)) ?? [];
+    const result = scoreBringCandidate(member, opponent, dex, format, roles);
+    const leadBias = (roles.includes('lead') ? 6 : 0) + (roles.includes('pivot') ? 4 : 0) + (roles.includes('speed-control') ? 3 : 0);
+    return {
+      member,
+      roles,
+      score: result.score,
+      leadScore: result.score + leadBias,
+      reasons: result.reasons,
+    };
+  });
+
+  let score = evaluations.reduce((sum, entry) => sum + entry.score, 0);
+  const reasons = uniqueStrings(evaluations.flatMap((entry) => entry.reasons));
+  const allRoles = new Set(evaluations.flatMap((entry) => entry.roles));
+  const typeList = evaluations.flatMap((entry) => dex.getSpecies(entry.member.species)?.types ?? []);
+  const uniqueTypeCount = new Set(typeList).size;
+  const primaryTypes = evaluations.map((entry) => dex.getSpecies(entry.member.species)?.types[0]).filter(Boolean);
+  const duplicatePrimaryPenalty = primaryTypes.length - new Set(primaryTypes).size;
+
+  if (allRoles.has('pivot')) {
+    score += 5;
+    reasons.push('keeps a safe pivot available for preview positioning');
+  }
+
+  if (allRoles.has('setup-sweeper') || allRoles.has('wallbreaker')) {
+    score += 5;
+    reasons.push('keeps a real closer or breaker in the backline');
+  }
+
+  if (allRoles.has('speed-control') || allRoles.has('scarfer') || evaluations.some((entry) => (dex.getBattleProfile(entry.member, format)?.baseStats.spe ?? 0) >= 100)) {
+    score += 4;
+    reasons.push('keeps speed pressure in the bring-3 line');
+  }
+
+  if (allRoles.has('physical-wall') || allRoles.has('special-wall')) {
+    score += 3;
+    reasons.push('adds a safer defensive pivot for bad preview guesses');
+  }
+
+  if (uniqueTypeCount >= Math.min(5, members.length + 2)) {
+    score += 4;
+    reasons.push('covers more matchup branches without overcommitting to one lane');
+  }
+
+  if (duplicatePrimaryPenalty > 0) {
+    score -= duplicatePrimaryPenalty * 5;
+  }
+
+  const ordered = evaluations
+    .sort((left, right) => right.leadScore - left.leadScore || right.score - left.score || memberName(left.member).localeCompare(memberName(right.member)))
+    .map((entry) => entry.member);
+
+  return {
+    score,
+    reasons: uniqueStrings(reasons).slice(0, 4),
+    ordered,
+  };
+}
+
 export async function planBringFromPreview(team: Team, opponent: Team | null, deps: AnalyzeTeamDeps): Promise<PreviewMatchupPlan> {
   await preloadUsageAnalytics(team.format);
   const report = await analyzeTeam(team, deps);
@@ -813,6 +907,7 @@ export async function planBringFromPreview(team: Team, opponent: Team | null, de
   }
 
   const roles = summarizeRoles(team, deps.dex);
+  const roleMap = new Map(roles.map((entry) => [entry.member, [...entry.roles]]));
   const ourRanked = team.members
     .map((member) => {
       const roleEntry = roles.find((entry) => entry.member === memberName(member));
@@ -868,9 +963,14 @@ export async function planBringFromPreview(team: Team, opponent: Team | null, de
   else if (theirFastest >= ourFastest + 5) speedNotes.push('Respect their fastest slot or preserve your speed control carefully.');
   else speedNotes.push('The top end speed is close, so positioning and priority matter.');
 
-  const recommendedBring = ourRanked.slice(0, 3).map((entry) => entry.name);
+  const bringSize = Math.min(3, team.members.length);
+  const bestLine = getCombinations(team.members, bringSize)
+    .map((members) => scoreBringLine(members, opponent, deps.dex, team.format, roleMap))
+    .sort((left, right) => right.score - left.score)[0];
+
+  const recommendedBring = (bestLine?.ordered ?? team.members.slice(0, bringSize)).map(memberName);
   const recommendedLead = recommendedBring[0] ?? ourRanked[0]?.name ?? 'None';
-  const benchOrder = ourRanked.slice(3).map((entry) => entry.name);
+  const benchOrder = ourRanked.map((entry) => entry.name).filter((name) => !recommendedBring.includes(name));
 
   const winConditions = recommendedBring.map((name) => {
     const roleEntry = roles.find((entry) => entry.member === name);
@@ -882,7 +982,9 @@ export async function planBringFromPreview(team: Team, opponent: Team | null, de
 
   const reasons = [
     `Lead choice favors immediate pressure and positioning into ${opponentLikelyLeads[0] ?? 'their most likely opener'}.`,
-    'Bring choices were weighted by coverage, speed control, resilience, and current live usage trends.',
+    `Best line keeps ${recommendedBring.join(', ')} together as a coherent bring-3 shell.`,
+    'Bring choices were weighted by full line synergy, coverage, speed control, resilience, and current live usage trends.',
+    ...(bestLine?.reasons ?? []),
   ];
 
   if (deps.simulator) {

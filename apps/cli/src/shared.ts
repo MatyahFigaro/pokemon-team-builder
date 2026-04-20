@@ -206,6 +206,11 @@ export function formatAnalysisReport(report: AnalysisReport, explain = false): s
   const simulationLine = report.simulation.enabled && typeof report.simulation.winRate === 'number'
     ? `${Math.round(report.simulation.winRate * 100)}% over ${report.simulation.iterations} games vs ${report.simulation.opponentPreview.join(', ') || report.simulation.opponentModel}`
     : 'unavailable';
+  const primaryLead = report.battlePlan.leadCandidates[0] ?? report.battlePlan.likelyPicks[0] ?? 'None';
+  const primaryLine = [
+    primaryLead,
+    ...report.battlePlan.likelyPicks.filter((name) => name !== primaryLead).slice(0, 2),
+  ].filter(Boolean).join(' + ');
 
   return [
     `Format: ${report.format}`,
@@ -218,6 +223,7 @@ export function formatAnalysisReport(report: AnalysisReport, explain = false): s
     `Hazards: setter=${report.synergy.hasHazardSetter} removal=${report.synergy.hasHazardRemoval}`,
     `Likely leads: ${report.battlePlan.leadCandidates.join(', ') || 'None'}`,
     `Likely picks: ${report.battlePlan.likelyPicks.join(', ') || 'None'}`,
+    `Primary line: ${primaryLine || 'None'}`,
     `Tera dependency: ${report.battlePlan.teraDependency === 'not-applicable' ? 'n/a' : report.battlePlan.teraDependency}`,
     `Simulation: ${simulationLine}`,
     `Threat coverage: ${report.threats.coverageScore}/100 from ${report.threats.consideredThreatCount} evaluated threats`,
@@ -246,6 +252,7 @@ export function formatBringPlan(plan: PreviewMatchupPlan): string {
 
   return [
     `Recommended lead: ${plan.recommendedLead}`,
+    `Recommended backline: ${plan.recommendedBring.slice(1).join(', ') || 'None'}`,
     `Best three to bring: ${plan.recommendedBring.join(', ') || 'None'}`,
     `Bench order: ${plan.benchOrder.join(', ') || 'None'}`,
     `Likely opponent leads: ${plan.opponentLikelyLeads.join(', ') || 'Unknown'}`,
