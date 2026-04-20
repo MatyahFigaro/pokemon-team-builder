@@ -3743,6 +3743,377 @@
           "spe": 31
         }
       }
+    },
+    {
+      "id": "gen9championsbssregma::greninjamega::greninjite::protean::timid::notera::hp2-spa32-spe32::atk31-def31-hp31-spa31-spd31-spe31::darkpulse-grassknot-icebeam-watershuriken::noroles::nostyles::default",
+      "format": "gen9championsbssregma",
+      "species": "Greninja-Mega",
+      "source": "clipboard",
+      "createdAt": "2026-04-20T01:19:01.113Z",
+      "updatedAt": "2026-04-20T01:19:01.113Z",
+      "set": {
+        "species": "Greninja-Mega",
+        "item": "Greninjite",
+        "ability": "protean",
+        "nature": "timid",
+        "level": 50,
+        "moves": [
+          "Water Shuriken",
+          "Ice Beam",
+          "Dark Pulse",
+          "Grass Knot"
+        ],
+        "evs": {
+          "hp": 2,
+          "atk": 0,
+          "def": 0,
+          "spa": 32,
+          "spd": 0,
+          "spe": 32
+        },
+        "ivs": {
+          "hp": 31,
+          "atk": 31,
+          "def": 31,
+          "spa": 31,
+          "spd": 31,
+          "spe": 31
+        }
+      }
+    },
+    {
+      "id": "gen9championsbssregma::floettemega::floettite::fairyaura::modest::notera::def2-hp32-spa32::atk31-def31-hp31-spa31-spd31-spe31::calmmind-dazzlinggleam-moonblast-psychic::noroles::nostyles::default",
+      "format": "gen9championsbssregma",
+      "species": "Floette-Mega",
+      "source": "clipboard",
+      "createdAt": "2026-04-20T01:19:01.113Z",
+      "updatedAt": "2026-04-20T01:19:01.113Z",
+      "set": {
+        "species": "Floette-Mega",
+        "item": "Floettite",
+        "ability": "fairyaura",
+        "nature": "modest",
+        "level": 50,
+        "gender": "F",
+        "moves": [
+          "Moonblast",
+          "Dazzling Gleam",
+          "Psychic",
+          "Calm Mind"
+        ],
+        "evs": {
+          "hp": 32,
+          "atk": 0,
+          "def": 2,
+          "spa": 32,
+          "spd": 0,
+          "spe": 0
+        },
+        "ivs": {
+          "hp": 31,
+          "atk": 31,
+          "def": 31,
+          "spa": 31,
+          "spd": 31,
+          "spe": 31
+        }
+      }
+    },
+    {
+      "id": "gen9championsbssregma::aegislash::spelltag::stancechange::jolly::notera::atk32-hp32-spe2::atk31-def31-hp31-spa31-spd31-spe31::ironhead-kingsshield-shadowclaw-shadowsneak::noroles::nostyles::default",
+      "format": "gen9championsbssregma",
+      "species": "Aegislash",
+      "source": "clipboard",
+      "createdAt": "2026-04-20T01:19:01.113Z",
+      "updatedAt": "2026-04-20T01:19:01.113Z",
+      "set": {
+        "species": "Aegislash",
+        "item": "Spell Tag",
+        "ability": "stancechange",
+        "nature": "jolly",
+        "level": 50,
+        "moves": [
+          "Iron Head",
+          "Shadow Claw",
+          "Shadow Sneak",
+          "King's Shield"
+        ],
+        "evs": {
+          "hp": 32,
+          "atk": 32,
+          "def": 0,
+          "spa": 0,
+          "spd": 0,
+          "spe": 2
+        },
+        "ivs": {
+          "hp": 31,
+          "atk": 31,
+          "def": 31,
+          "spa": 31,
+          "spd": 31,
+          "spe": 31
+        }
+      }
+    },
+    {
+      "id": "gen9championsbssregma::primarina::leftovers::torrent::modest::notera::def2-spa32-spd32::atk31-def31-hp31-spa31-spd31-spe31::calmmind-moonblast-psychic-sparklingaria::noroles::nostyles::default",
+      "format": "gen9championsbssregma",
+      "species": "Primarina",
+      "source": "clipboard",
+      "createdAt": "2026-04-20T01:19:01.113Z",
+      "updatedAt": "2026-04-20T01:19:01.113Z",
+      "set": {
+        "species": "Primarina",
+        "item": "Leftovers",
+        "ability": "torrent",
+        "nature": "modest",
+        "level": 50,
+        "moves": [
+          "Calm Mind",
+          "Sparkling Aria",
+          "Psychic",
+          "Moonblast"
+        ],
+        "evs": {
+          "hp": 0,
+          "atk": 0,
+          "def": 2,
+          "spa": 32,
+          "spd": 32,
+          "spe": 0
+        },
+        "ivs": {
+          "hp": 31,
+          "atk": 31,
+          "def": 31,
+          "spa": 31,
+          "spd": 31,
+          "spe": 31
+        }
+      }
+    },
+    {
+      "id": "gen9championsbssregma::mimikyu::spelltag::disguise::adamant::notera::atk32-def1-hp1-spe32::atk31-def31-hp31-spa31-spd31-spe31::playrough-shadowclaw-shadowsneak-swordsdance::noroles::nostyles::default",
+      "format": "gen9championsbssregma",
+      "species": "Mimikyu",
+      "source": "clipboard",
+      "createdAt": "2026-04-20T01:19:01.113Z",
+      "updatedAt": "2026-04-20T01:19:01.113Z",
+      "set": {
+        "species": "Mimikyu",
+        "item": "Spell Tag",
+        "ability": "disguise",
+        "nature": "adamant",
+        "level": 50,
+        "moves": [
+          "Play Rough",
+          "Shadow Claw",
+          "Shadow Sneak",
+          "Swords Dance"
+        ],
+        "evs": {
+          "hp": 1,
+          "atk": 32,
+          "def": 1,
+          "spa": 0,
+          "spd": 0,
+          "spe": 32
+        },
+        "ivs": {
+          "hp": 31,
+          "atk": 31,
+          "def": 31,
+          "spa": 31,
+          "spd": 31,
+          "spe": 31
+        }
+      }
+    },
+    {
+      "id": "gen9championsbssregma::mimikyu::lumberry::disguise::adamant::notera::atk32-def5-hp29::atk31-def31-hp31-spa31-spd31-spe31::curse-playrough-shadowclaw-trickroom::noroles::nostyles::default",
+      "format": "gen9championsbssregma",
+      "species": "Mimikyu",
+      "source": "clipboard",
+      "createdAt": "2026-04-20T01:19:01.113Z",
+      "updatedAt": "2026-04-20T01:19:01.113Z",
+      "set": {
+        "species": "Mimikyu",
+        "item": "Lum Berry",
+        "ability": "disguise",
+        "nature": "adamant",
+        "level": 50,
+        "moves": [
+          "Play Rough",
+          "Shadow Claw",
+          "Curse",
+          "Trick Room"
+        ],
+        "evs": {
+          "hp": 29,
+          "atk": 32,
+          "def": 5,
+          "spa": 0,
+          "spd": 0,
+          "spe": 0
+        },
+        "ivs": {
+          "hp": 31,
+          "atk": 31,
+          "def": 31,
+          "spa": 31,
+          "spd": 31,
+          "spe": 31
+        }
+      }
+    },
+    {
+      "id": "gen9championsbssregma::corviknight::leftovers::mirrorarmor::careful::notera::hp32-spd25-spe9::atk31-def31-hp31-spa31-spd31-spe31::bravebird-roost-taunt-uturn::noroles::nostyles::default",
+      "format": "gen9championsbssregma",
+      "species": "Corviknight",
+      "source": "clipboard",
+      "createdAt": "2026-04-20T01:19:01.113Z",
+      "updatedAt": "2026-04-20T01:19:01.113Z",
+      "set": {
+        "species": "Corviknight",
+        "item": "Leftovers",
+        "ability": "mirrorarmor",
+        "nature": "careful",
+        "level": 50,
+        "moves": [
+          "Brave Bird",
+          "U-turn",
+          "Taunt",
+          "Roost"
+        ],
+        "evs": {
+          "hp": 32,
+          "atk": 0,
+          "def": 0,
+          "spa": 0,
+          "spd": 25,
+          "spe": 9
+        },
+        "ivs": {
+          "hp": 31,
+          "atk": 31,
+          "def": 31,
+          "spa": 31,
+          "spd": 31,
+          "spe": 31
+        }
+      }
+    },
+    {
+      "id": "gen9championsbssregma::corviknight::sitrusberry::mirrorarmor::impish::notera::def32-hp32-spd2::atk31-def31-hp31-spa31-spd31-spe31::bodypress-ironhead-roost-uturn::noroles::nostyles::default",
+      "format": "gen9championsbssregma",
+      "species": "Corviknight",
+      "source": "clipboard",
+      "createdAt": "2026-04-20T01:19:01.113Z",
+      "updatedAt": "2026-04-20T01:19:01.113Z",
+      "set": {
+        "species": "Corviknight",
+        "item": "Sitrus Berry",
+        "ability": "mirrorarmor",
+        "nature": "impish",
+        "level": 50,
+        "moves": [
+          "Iron Head",
+          "U-turn",
+          "Body Press",
+          "Roost"
+        ],
+        "evs": {
+          "hp": 32,
+          "atk": 0,
+          "def": 32,
+          "spa": 0,
+          "spd": 2,
+          "spe": 0
+        },
+        "ivs": {
+          "hp": 31,
+          "atk": 31,
+          "def": 31,
+          "spa": 31,
+          "spd": 31,
+          "spe": 31
+        }
+      }
+    },
+    {
+      "id": "gen9championsbssregma::dragapult::focussash::infiltrator::timid::notera::hp2-spa32-spe32::atk31-def31-hp31-spa31-spd31-spe31::dracometeor-hex-thunderwave-willowisp::noroles::nostyles::default",
+      "format": "gen9championsbssregma",
+      "species": "Dragapult",
+      "source": "clipboard",
+      "createdAt": "2026-04-20T01:19:01.113Z",
+      "updatedAt": "2026-04-20T01:19:01.113Z",
+      "set": {
+        "species": "Dragapult",
+        "item": "Focus Sash",
+        "ability": "infiltrator",
+        "nature": "timid",
+        "level": 50,
+        "moves": [
+          "Hex",
+          "Draco Meteor",
+          "Thunder Wave",
+          "Will-O-Wisp"
+        ],
+        "evs": {
+          "hp": 2,
+          "atk": 0,
+          "def": 0,
+          "spa": 32,
+          "spd": 0,
+          "spe": 32
+        },
+        "ivs": {
+          "hp": 31,
+          "atk": 31,
+          "def": 31,
+          "spa": 31,
+          "spd": 31,
+          "spe": 31
+        }
+      }
+    },
+    {
+      "id": "gen9championsbssregma::palafin::mysticwater::zerotohero::adamant::notera::atk32-hp32-spe2::atk31-def31-hp31-spa31-spd31-spe31::bulkup-drainpunch-jetpunch-taunt::noroles::nostyles::default",
+      "format": "gen9championsbssregma",
+      "species": "Palafin",
+      "source": "clipboard",
+      "createdAt": "2026-04-20T01:19:01.113Z",
+      "updatedAt": "2026-04-20T01:19:01.113Z",
+      "set": {
+        "species": "Palafin",
+        "item": "Mystic Water",
+        "ability": "zerotohero",
+        "nature": "adamant",
+        "level": 50,
+        "moves": [
+          "Drain Punch",
+          "Bulk Up",
+          "Jet Punch",
+          "Taunt"
+        ],
+        "evs": {
+          "hp": 32,
+          "atk": 32,
+          "def": 0,
+          "spa": 0,
+          "spd": 0,
+          "spe": 2
+        },
+        "ivs": {
+          "hp": 31,
+          "atk": 31,
+          "def": 31,
+          "spa": 31,
+          "spd": 31,
+          "spe": 31
+        }
+      }
     }
   ]
 }
