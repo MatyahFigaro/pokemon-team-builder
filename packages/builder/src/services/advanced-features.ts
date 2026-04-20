@@ -287,7 +287,7 @@ async function rescoreTopCandidatesWithSimulation(
       format: constraints.format,
       team: simTeam,
       opponent: probeOpponent,
-      iterations: 1,
+      iterations: isBssLikeFormat(constraints.format) ? 3 : 2,
     });
 
     if (!summary) return candidate;
@@ -296,7 +296,7 @@ async function rescoreTopCandidatesWithSimulation(
     const reasons = [...candidate.reasons];
 
     if (summary.winRate >= 0.62) {
-      reasons.unshift(`tests well in Showdown-backed sims into current live pressure (${Math.round(summary.winRate * 100)}%)`);
+      reasons.unshift(`tests well in bring-3-aware Showdown sims into current live pressure (${Math.round(summary.winRate * 100)}%)`);
     } else if (summary.winRate <= 0.42) {
       score -= 4;
       reasons.push('still looks shaky in simulation against the current threat cluster');
@@ -1452,7 +1452,7 @@ export async function buildWithConstraints(constraints: BuildConstraints, deps: 
             'The BSS teambuilding guide is now reflected in scoring: bring-3 shells, safe leads or pivots, speed control or priority, and matchup patching matter more than generic hazards or same-type stacking.',
             'The builder also avoids stuffing the roster with too many Mega options; at most two Mega candidates are kept, and they still need real synergy with the rest of the shell.',
             'It also avoids overstacking hazard setters, so field pressure does not crowd out better bring-3 partners.',
-            deps.simulator ? 'Top shortlist options are now iterated through Showdown-backed matchup sims against the current live threat cluster until the shell clears or approaches the target win-rate band.' : undefined,
+            deps.simulator ? 'Top shortlist options are now iterated through bring-3-aware Showdown matchup sims against the current live threat cluster until the shell clears or approaches the target win-rate band.' : undefined,
             iterativeSelection.projectedWinRate
               ? (iterativeSelection.projectedWinRate >= (isBssLikeFormat(constraints.format) ? 0.58 : 0.55)
                   ? `The current iterative shell reached about ${Math.round(iterativeSelection.projectedWinRate * 100)}% in the live threat-cluster sim.`
