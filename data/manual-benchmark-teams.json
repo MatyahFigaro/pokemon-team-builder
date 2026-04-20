@@ -1,4 +1,1199 @@
 {
   "version": 1,
-  "teams": []
+  "teams": [
+    {
+      "id": "gen9championsbssregma::charizardmegay-hippowdon-clefablemega-kingambit-rotomwash-meowscarada::default",
+      "format": "gen9championsbssregma",
+      "source": "clipboard",
+      "createdAt": "2026-04-20T02:03:30.110Z",
+      "updatedAt": "2026-04-20T02:03:30.110Z",
+      "team": {
+        "format": "gen9championsbssregma",
+        "source": "manual-benchmark",
+        "members": [
+          {
+            "species": "Charizard-Mega-Y",
+            "name": "",
+            "item": "Charizardite Y",
+            "ability": "blaze",
+            "nature": "timid",
+            "level": 50,
+            "gender": "",
+            "moves": [
+              "Overheat",
+              "Solar Beam",
+              "Scorching Sands",
+              "Ancient Power"
+            ],
+            "evs": {
+              "hp": 2,
+              "atk": 0,
+              "def": 0,
+              "spa": 32,
+              "spd": 0,
+              "spe": 32
+            },
+            "ivs": {
+              "hp": 31,
+              "atk": 31,
+              "def": 31,
+              "spa": 31,
+              "spd": 31,
+              "spe": 31
+            }
+          },
+          {
+            "species": "Hippowdon",
+            "name": "",
+            "item": "Mental Herb",
+            "ability": "sandstream",
+            "nature": "impish",
+            "level": 50,
+            "gender": "",
+            "moves": [
+              "Stealth Rock",
+              "Earthquake",
+              "Yawn",
+              "Slack Off"
+            ],
+            "evs": {
+              "hp": 32,
+              "atk": 0,
+              "def": 32,
+              "spa": 0,
+              "spd": 0,
+              "spe": 2
+            },
+            "ivs": {
+              "hp": 31,
+              "atk": 31,
+              "def": 31,
+              "spa": 31,
+              "spd": 31,
+              "spe": 31
+            }
+          },
+          {
+            "species": "Clefable-Mega",
+            "name": "",
+            "item": "Clefablite",
+            "ability": "unaware",
+            "nature": "bold",
+            "level": 50,
+            "gender": "",
+            "moves": [
+              "Calm Mind",
+              "Stored Power",
+              "Moonblast",
+              "Moonlight"
+            ],
+            "evs": {
+              "hp": 32,
+              "atk": 0,
+              "def": 32,
+              "spa": 0,
+              "spd": 2,
+              "spe": 0
+            },
+            "ivs": {
+              "hp": 31,
+              "atk": 31,
+              "def": 31,
+              "spa": 31,
+              "spd": 31,
+              "spe": 31
+            }
+          },
+          {
+            "species": "Kingambit",
+            "name": "",
+            "item": "Black Glasses",
+            "ability": "supremeoverlord",
+            "nature": "adamant",
+            "level": 50,
+            "gender": "",
+            "moves": [
+              "Kowtow Cleave",
+              "Sucker Punch",
+              "Iron Head",
+              "Swords Dance"
+            ],
+            "evs": {
+              "hp": 32,
+              "atk": 32,
+              "def": 2,
+              "spa": 0,
+              "spd": 0,
+              "spe": 0
+            },
+            "ivs": {
+              "hp": 31,
+              "atk": 31,
+              "def": 31,
+              "spa": 31,
+              "spd": 31,
+              "spe": 31
+            }
+          },
+          {
+            "species": "Rotom-Wash",
+            "name": "",
+            "item": "Sitrus Berry",
+            "ability": "levitate",
+            "nature": "calm",
+            "level": 50,
+            "gender": "",
+            "moves": [
+              "Hydro Pump",
+              "Thunderbolt",
+              "Will-O-Wisp",
+              "Volt Switch"
+            ],
+            "evs": {
+              "hp": 32,
+              "atk": 0,
+              "def": 32,
+              "spa": 2,
+              "spd": 0,
+              "spe": 0
+            },
+            "ivs": {
+              "hp": 31,
+              "atk": 31,
+              "def": 31,
+              "spa": 31,
+              "spd": 31,
+              "spe": 31
+            }
+          },
+          {
+            "species": "Meowscarada",
+            "name": "",
+            "item": "Focus Sash",
+            "ability": "protean",
+            "nature": "jolly",
+            "level": 50,
+            "gender": "",
+            "moves": [
+              "Flower Trick",
+              "Knock Off",
+              "Triple Axel",
+              "U-turn"
+            ],
+            "evs": {
+              "hp": 0,
+              "atk": 32,
+              "def": 2,
+              "spa": 0,
+              "spd": 0,
+              "spe": 32
+            },
+            "ivs": {
+              "hp": 31,
+              "atk": 31,
+              "def": 31,
+              "spa": 31,
+              "spd": 31,
+              "spe": 31
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "gen9championsbssregma::garchomp-gyarados-aegislash-volcarona-meowscarada-floetteeternal::default",
+      "format": "gen9championsbssregma",
+      "source": "clipboard",
+      "createdAt": "2026-04-20T02:04:23.385Z",
+      "updatedAt": "2026-04-20T02:04:23.385Z",
+      "team": {
+        "format": "gen9championsbssregma",
+        "source": "manual-benchmark",
+        "members": [
+          {
+            "species": "Garchomp",
+            "name": "",
+            "item": "Focus Sash",
+            "ability": "roughskin",
+            "nature": "jolly",
+            "level": 50,
+            "gender": "",
+            "moves": [
+              "Stealth Rock",
+              "Earthquake",
+              "Outrage",
+              "Rock Tomb"
+            ],
+            "evs": {
+              "hp": 0,
+              "atk": 32,
+              "def": 0,
+              "spa": 0,
+              "spd": 2,
+              "spe": 32
+            },
+            "ivs": {
+              "hp": 31,
+              "atk": 31,
+              "def": 31,
+              "spa": 31,
+              "spd": 31,
+              "spe": 31
+            }
+          },
+          {
+            "species": "Gyarados",
+            "name": "",
+            "item": "Gyaradosite",
+            "ability": "intimidate",
+            "nature": "adamant",
+            "level": 50,
+            "gender": "",
+            "moves": [
+              "Dragon Dance",
+              "Waterfall",
+              "Earthquake",
+              "Ice Fang"
+            ],
+            "evs": {
+              "hp": 2,
+              "atk": 32,
+              "def": 0,
+              "spa": 0,
+              "spd": 0,
+              "spe": 32
+            },
+            "ivs": {
+              "hp": 31,
+              "atk": 31,
+              "def": 31,
+              "spa": 31,
+              "spd": 31,
+              "spe": 31
+            }
+          },
+          {
+            "species": "Aegislash",
+            "name": "",
+            "item": "Spell Tag",
+            "ability": "stancechange",
+            "nature": "adamant",
+            "level": 50,
+            "gender": "",
+            "moves": [
+              "Swords Dance",
+              "Shadow Claw",
+              "Shadow Sneak",
+              "Close Combat"
+            ],
+            "evs": {
+              "hp": 0,
+              "atk": 32,
+              "def": 0,
+              "spa": 0,
+              "spd": 2,
+              "spe": 32
+            },
+            "ivs": {
+              "hp": 31,
+              "atk": 31,
+              "def": 31,
+              "spa": 31,
+              "spd": 31,
+              "spe": 31
+            }
+          },
+          {
+            "species": "Volcarona",
+            "name": "",
+            "item": "Leftovers",
+            "ability": "flamebody",
+            "nature": "timid",
+            "level": 50,
+            "gender": "",
+            "moves": [
+              "Quiver Dance",
+              "Fiery Dance",
+              "Bug Buzz",
+              "Giga Drain"
+            ],
+            "evs": {
+              "hp": 30,
+              "atk": 0,
+              "def": 23,
+              "spa": 2,
+              "spd": 2,
+              "spe": 9
+            },
+            "ivs": {
+              "hp": 31,
+              "atk": 31,
+              "def": 31,
+              "spa": 31,
+              "spd": 31,
+              "spe": 31
+            }
+          },
+          {
+            "species": "Meowscarada",
+            "name": "",
+            "item": "Choice Scarf",
+            "ability": "protean",
+            "nature": "jolly",
+            "level": 50,
+            "gender": "",
+            "moves": [
+              "Flower Trick",
+              "Knock Off",
+              "Triple Axel",
+              "U-turn"
+            ],
+            "evs": {
+              "hp": 2,
+              "atk": 32,
+              "def": 0,
+              "spa": 0,
+              "spd": 0,
+              "spe": 32
+            },
+            "ivs": {
+              "hp": 31,
+              "atk": 31,
+              "def": 31,
+              "spa": 31,
+              "spd": 31,
+              "spe": 31
+            }
+          },
+          {
+            "species": "Floette-Eternal",
+            "name": "",
+            "item": "Floettite",
+            "ability": "flowerveil",
+            "nature": "modest",
+            "level": 50,
+            "gender": "F",
+            "moves": [
+              "Calm Mind",
+              "Draining Kiss",
+              "Moonblast",
+              "Psychic"
+            ],
+            "evs": {
+              "hp": 32,
+              "atk": 0,
+              "def": 2,
+              "spa": 32,
+              "spd": 0,
+              "spe": 0
+            },
+            "ivs": {
+              "hp": 31,
+              "atk": 31,
+              "def": 31,
+              "spa": 31,
+              "spd": 31,
+              "spe": 31
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "gen9championsbssregma::kangaskhanmega-hippowdon-gengarmega-hydreigon-aegislash-primarina::default",
+      "format": "gen9championsbssregma",
+      "source": "clipboard",
+      "createdAt": "2026-04-20T02:04:32.213Z",
+      "updatedAt": "2026-04-20T02:04:32.213Z",
+      "team": {
+        "format": "gen9championsbssregma",
+        "source": "manual-benchmark",
+        "members": [
+          {
+            "species": "Kangaskhan-Mega",
+            "name": "",
+            "item": "Kangaskhanite",
+            "ability": "scrappy",
+            "nature": "adamant",
+            "level": 50,
+            "gender": "F",
+            "moves": [
+              "Earthquake",
+              "Double-Edge",
+              "Fake Out",
+              "Sucker Punch"
+            ],
+            "evs": {
+              "hp": 1,
+              "atk": 32,
+              "def": 1,
+              "spa": 0,
+              "spd": 0,
+              "spe": 32
+            },
+            "ivs": {
+              "hp": 31,
+              "atk": 31,
+              "def": 31,
+              "spa": 31,
+              "spd": 31,
+              "spe": 31
+            }
+          },
+          {
+            "species": "Hippowdon",
+            "name": "",
+            "item": "Leftovers",
+            "ability": "sandstream",
+            "nature": "naughty",
+            "level": 50,
+            "gender": "",
+            "moves": [
+              "Yawn",
+              "Earthquake",
+              "Stealth Rock",
+              "Slack Off"
+            ],
+            "evs": {
+              "hp": 32,
+              "atk": 0,
+              "def": 32,
+              "spa": 0,
+              "spd": 0,
+              "spe": 2
+            },
+            "ivs": {
+              "hp": 31,
+              "atk": 31,
+              "def": 31,
+              "spa": 31,
+              "spd": 31,
+              "spe": 31
+            }
+          },
+          {
+            "species": "Gengar-Mega",
+            "name": "",
+            "item": "Gengarite",
+            "ability": "cursedbody",
+            "nature": "timid",
+            "level": 50,
+            "gender": "",
+            "moves": [
+              "Will-O-Wisp",
+              "Shadow Ball",
+              "Sludge Wave",
+              "Destiny Bond"
+            ],
+            "evs": {
+              "hp": 32,
+              "atk": 0,
+              "def": 1,
+              "spa": 0,
+              "spd": 1,
+              "spe": 32
+            },
+            "ivs": {
+              "hp": 31,
+              "atk": 31,
+              "def": 31,
+              "spa": 31,
+              "spd": 31,
+              "spe": 31
+            }
+          },
+          {
+            "species": "Hydreigon",
+            "name": "",
+            "item": "Choice Scarf",
+            "ability": "levitate",
+            "nature": "modest",
+            "level": 50,
+            "gender": "",
+            "moves": [
+              "Dark Pulse",
+              "Flamethrower",
+              "U-turn",
+              "Draco Meteor"
+            ],
+            "evs": {
+              "hp": 0,
+              "atk": 0,
+              "def": 1,
+              "spa": 32,
+              "spd": 1,
+              "spe": 32
+            },
+            "ivs": {
+              "hp": 31,
+              "atk": 31,
+              "def": 31,
+              "spa": 31,
+              "spd": 31,
+              "spe": 31
+            }
+          },
+          {
+            "species": "Aegislash",
+            "name": "",
+            "item": "Spell Tag",
+            "ability": "stancechange",
+            "nature": "calm",
+            "level": 50,
+            "gender": "",
+            "moves": [
+              "Close Combat",
+              "Shadow Sneak",
+              "King's Shield",
+              "Shadow Ball"
+            ],
+            "evs": {
+              "hp": 32,
+              "atk": 2,
+              "def": 0,
+              "spa": 32,
+              "spd": 0,
+              "spe": 0
+            },
+            "ivs": {
+              "hp": 31,
+              "atk": 31,
+              "def": 31,
+              "spa": 31,
+              "spd": 31,
+              "spe": 31
+            }
+          },
+          {
+            "species": "Primarina",
+            "name": "",
+            "item": "Sitrus Berry",
+            "ability": "torrent",
+            "nature": "modest",
+            "level": 50,
+            "gender": "",
+            "moves": [
+              "Aqua Jet",
+              "Sparkling Aria",
+              "Flip Turn",
+              "Moonblast"
+            ],
+            "evs": {
+              "hp": 32,
+              "atk": 0,
+              "def": 1,
+              "spa": 32,
+              "spd": 1,
+              "spe": 0
+            },
+            "ivs": {
+              "hp": 31,
+              "atk": 31,
+              "def": 31,
+              "spa": 31,
+              "spd": 31,
+              "spe": 31
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "gen9championsbssregma::orthworm-delphoxmega-azumarill-sneasler-garchomp-greninjamega::default",
+      "format": "gen9championsbssregma",
+      "source": "clipboard",
+      "createdAt": "2026-04-20T02:04:40.812Z",
+      "updatedAt": "2026-04-20T02:04:40.812Z",
+      "team": {
+        "format": "gen9championsbssregma",
+        "source": "manual-benchmark",
+        "members": [
+          {
+            "species": "Orthworm",
+            "name": "",
+            "item": "Leftovers",
+            "ability": "eartheater",
+            "nature": "impish",
+            "level": 100,
+            "gender": "",
+            "moves": [
+              "Stealth Rock",
+              "Body Press",
+              "Iron Head",
+              "Shed Tail"
+            ],
+            "evs": {
+              "hp": 32,
+              "atk": 0,
+              "def": 32,
+              "spa": 0,
+              "spd": 2,
+              "spe": 0
+            },
+            "ivs": {
+              "hp": 31,
+              "atk": 31,
+              "def": 31,
+              "spa": 31,
+              "spd": 31,
+              "spe": 31
+            }
+          },
+          {
+            "species": "Delphox-Mega",
+            "name": "",
+            "item": "Delphoxite",
+            "ability": "levitate",
+            "nature": "timid",
+            "level": 50,
+            "gender": "",
+            "moves": [
+              "Flamethrower",
+              "Psychic",
+              "Dazzling Gleam",
+              "Nasty Plot"
+            ],
+            "evs": {
+              "hp": 32,
+              "atk": 0,
+              "def": 0,
+              "spa": 5,
+              "spd": 0,
+              "spe": 29
+            },
+            "ivs": {
+              "hp": 31,
+              "atk": 31,
+              "def": 31,
+              "spa": 31,
+              "spd": 31,
+              "spe": 31
+            }
+          },
+          {
+            "species": "Azumarill",
+            "name": "",
+            "item": "Sitrus Berry",
+            "ability": "hugepower",
+            "nature": "adamant",
+            "level": 50,
+            "gender": "",
+            "moves": [
+              "Belly Drum",
+              "Liquidation",
+              "Play Rough",
+              "Aqua Jet"
+            ],
+            "evs": {
+              "hp": 15,
+              "atk": 32,
+              "def": 0,
+              "spa": 0,
+              "spd": 0,
+              "spe": 19
+            },
+            "ivs": {
+              "hp": 31,
+              "atk": 31,
+              "def": 31,
+              "spa": 31,
+              "spd": 31,
+              "spe": 31
+            }
+          },
+          {
+            "species": "Sneasler",
+            "name": "",
+            "item": "White Herb",
+            "ability": "unburden",
+            "nature": "adamant",
+            "level": 50,
+            "gender": "",
+            "moves": [
+              "Swords Dance",
+              "Close Combat",
+              "Dire Claw",
+              "Throat Chop"
+            ],
+            "evs": {
+              "hp": 2,
+              "atk": 32,
+              "def": 0,
+              "spa": 0,
+              "spd": 0,
+              "spe": 32
+            },
+            "ivs": {
+              "hp": 31,
+              "atk": 31,
+              "def": 31,
+              "spa": 31,
+              "spd": 31,
+              "spe": 31
+            }
+          },
+          {
+            "species": "Garchomp",
+            "name": "",
+            "item": "Choice Scarf",
+            "ability": "roughskin",
+            "nature": "jolly",
+            "level": 50,
+            "gender": "",
+            "moves": [
+              "Earthquake",
+              "Outrage",
+              "Stone Edge",
+              "Poison Jab"
+            ],
+            "evs": {
+              "hp": 0,
+              "atk": 32,
+              "def": 0,
+              "spa": 0,
+              "spd": 2,
+              "spe": 32
+            },
+            "ivs": {
+              "hp": 31,
+              "atk": 31,
+              "def": 31,
+              "spa": 31,
+              "spd": 31,
+              "spe": 31
+            }
+          },
+          {
+            "species": "Greninja-Mega",
+            "name": "",
+            "item": "Greninjite",
+            "ability": "protean",
+            "nature": "timid",
+            "level": 50,
+            "gender": "",
+            "moves": [
+              "Water Shuriken",
+              "Surf",
+              "Sludge Wave",
+              "Ice Beam"
+            ],
+            "evs": {
+              "hp": 0,
+              "atk": 0,
+              "def": 1,
+              "spa": 32,
+              "spd": 1,
+              "spe": 32
+            },
+            "ivs": {
+              "hp": 31,
+              "atk": 31,
+              "def": 31,
+              "spa": 31,
+              "spd": 31,
+              "spe": 31
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "gen9championsbssregma::gengarmega-garchomp-rotomwash-scizormega-primarina-meowscarada::default",
+      "format": "gen9championsbssregma",
+      "source": "clipboard",
+      "createdAt": "2026-04-20T02:04:47.203Z",
+      "updatedAt": "2026-04-20T02:04:47.203Z",
+      "team": {
+        "format": "gen9championsbssregma",
+        "source": "manual-benchmark",
+        "members": [
+          {
+            "species": "Gengar-Mega",
+            "name": "",
+            "item": "Gengarite",
+            "ability": "cursedbody",
+            "nature": "timid",
+            "level": 50,
+            "gender": "",
+            "moves": [
+              "Shadow Ball",
+              "Sludge Wave",
+              "Icy Wind",
+              "Destiny Bond"
+            ],
+            "evs": {
+              "hp": 2,
+              "atk": 0,
+              "def": 0,
+              "spa": 32,
+              "spd": 0,
+              "spe": 32
+            },
+            "ivs": {
+              "hp": 31,
+              "atk": 31,
+              "def": 31,
+              "spa": 31,
+              "spd": 31,
+              "spe": 31
+            }
+          },
+          {
+            "species": "Garchomp",
+            "name": "",
+            "item": "Focus Sash",
+            "ability": "roughskin",
+            "nature": "jolly",
+            "level": 50,
+            "gender": "",
+            "moves": [
+              "Stealth Rock",
+              "Earthquake",
+              "Outrage",
+              "Flamethrower"
+            ],
+            "evs": {
+              "hp": 2,
+              "atk": 32,
+              "def": 0,
+              "spa": 0,
+              "spd": 0,
+              "spe": 32
+            },
+            "ivs": {
+              "hp": 31,
+              "atk": 31,
+              "def": 31,
+              "spa": 31,
+              "spd": 31,
+              "spe": 31
+            }
+          },
+          {
+            "species": "Rotom-Wash",
+            "name": "",
+            "item": "Sitrus Berry",
+            "ability": "levitate",
+            "nature": "bold",
+            "level": 50,
+            "gender": "",
+            "moves": [
+              "Hydro Pump",
+              "Volt Switch",
+              "Will-O-Wisp",
+              "Pain Split"
+            ],
+            "evs": {
+              "hp": 32,
+              "atk": 0,
+              "def": 28,
+              "spa": 0,
+              "spd": 6,
+              "spe": 0
+            },
+            "ivs": {
+              "hp": 31,
+              "atk": 31,
+              "def": 31,
+              "spa": 31,
+              "spd": 31,
+              "spe": 31
+            }
+          },
+          {
+            "species": "Scizor-Mega",
+            "name": "",
+            "item": "Scizorite",
+            "ability": "technician",
+            "nature": "adamant",
+            "level": 50,
+            "gender": "",
+            "moves": [
+              "Swords Dance",
+              "Bullet Punch",
+              "Close Combat",
+              "U-turn"
+            ],
+            "evs": {
+              "hp": 32,
+              "atk": 32,
+              "def": 0,
+              "spa": 0,
+              "spd": 0,
+              "spe": 2
+            },
+            "ivs": {
+              "hp": 31,
+              "atk": 31,
+              "def": 31,
+              "spa": 31,
+              "spd": 31,
+              "spe": 31
+            }
+          },
+          {
+            "species": "Primarina",
+            "name": "",
+            "item": "Leftovers",
+            "ability": "torrent",
+            "nature": "modest",
+            "level": 50,
+            "gender": "",
+            "moves": [
+              "Calm Mind",
+              "Moonblast",
+              "Sparkling Aria",
+              "Encore"
+            ],
+            "evs": {
+              "hp": 0,
+              "atk": 0,
+              "def": 0,
+              "spa": 32,
+              "spd": 32,
+              "spe": 2
+            },
+            "ivs": {
+              "hp": 31,
+              "atk": 31,
+              "def": 31,
+              "spa": 31,
+              "spd": 31,
+              "spe": 31
+            }
+          },
+          {
+            "species": "Meowscarada",
+            "name": "",
+            "item": "Choice Scarf",
+            "ability": "protean",
+            "nature": "jolly",
+            "level": 50,
+            "gender": "",
+            "moves": [
+              "Flower Trick",
+              "Knock Off",
+              "Triple Axel",
+              "U-turn"
+            ],
+            "evs": {
+              "hp": 2,
+              "atk": 32,
+              "def": 0,
+              "spa": 0,
+              "spd": 0,
+              "spe": 32
+            },
+            "ivs": {
+              "hp": 31,
+              "atk": 31,
+              "def": 31,
+              "spa": 31,
+              "spd": 31,
+              "spe": 31
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "gen9championsbssregma::dragonitemega-scizormega-garchomp-primarina-kingambit-basculegion::default",
+      "format": "gen9championsbssregma",
+      "source": "clipboard",
+      "createdAt": "2026-04-20T02:04:54.088Z",
+      "updatedAt": "2026-04-20T02:04:54.088Z",
+      "team": {
+        "format": "gen9championsbssregma",
+        "source": "manual-benchmark",
+        "members": [
+          {
+            "species": "Dragonite-Mega",
+            "name": "",
+            "item": "Dragoninite",
+            "ability": "multiscale",
+            "nature": "modest",
+            "level": 50,
+            "gender": "",
+            "moves": [
+              "Draco Meteor",
+              "Thunderbolt",
+              "Flamethrower",
+              "Extreme Speed"
+            ],
+            "evs": {
+              "hp": 2,
+              "atk": 0,
+              "def": 0,
+              "spa": 32,
+              "spd": 0,
+              "spe": 32
+            },
+            "ivs": {
+              "hp": 31,
+              "atk": 31,
+              "def": 31,
+              "spa": 31,
+              "spd": 31,
+              "spe": 31
+            }
+          },
+          {
+            "species": "Scizor-Mega",
+            "name": "",
+            "item": "Scizorite",
+            "ability": "technician",
+            "nature": "adamant",
+            "level": 50,
+            "gender": "",
+            "moves": [
+              "Swords Dance",
+              "Bullet Punch",
+              "Close Combat",
+              "Knock Off"
+            ],
+            "evs": {
+              "hp": 32,
+              "atk": 32,
+              "def": 0,
+              "spa": 0,
+              "spd": 0,
+              "spe": 2
+            },
+            "ivs": {
+              "hp": 31,
+              "atk": 31,
+              "def": 31,
+              "spa": 31,
+              "spd": 31,
+              "spe": 31
+            }
+          },
+          {
+            "species": "Garchomp",
+            "name": "",
+            "item": "Focus Sash",
+            "ability": "roughskin",
+            "nature": "jolly",
+            "level": 50,
+            "gender": "",
+            "moves": [
+              "Stealth Rock",
+              "Earthquake",
+              "Outrage",
+              "Flamethrower"
+            ],
+            "evs": {
+              "hp": 0,
+              "atk": 0,
+              "def": 0,
+              "spa": 32,
+              "spd": 2,
+              "spe": 32
+            },
+            "ivs": {
+              "hp": 31,
+              "atk": 31,
+              "def": 31,
+              "spa": 31,
+              "spd": 31,
+              "spe": 31
+            }
+          },
+          {
+            "species": "Primarina",
+            "name": "",
+            "item": "Sitrus Berry",
+            "ability": "torrent",
+            "nature": "modest",
+            "level": 50,
+            "gender": "",
+            "moves": [
+              "Moonblast",
+              "Sparkling Aria",
+              "Encore",
+              "Flip Turn"
+            ],
+            "evs": {
+              "hp": 32,
+              "atk": 0,
+              "def": 0,
+              "spa": 32,
+              "spd": 0,
+              "spe": 2
+            },
+            "ivs": {
+              "hp": 31,
+              "atk": 31,
+              "def": 31,
+              "spa": 31,
+              "spd": 31,
+              "spe": 31
+            }
+          },
+          {
+            "species": "Kingambit",
+            "name": "",
+            "item": "Black Glasses",
+            "ability": "supremeoverlord",
+            "nature": "adamant",
+            "level": 50,
+            "gender": "",
+            "moves": [
+              "Swords Dance",
+              "Kowtow Cleave",
+              "Iron Head",
+              "Sucker Punch"
+            ],
+            "evs": {
+              "hp": 32,
+              "atk": 32,
+              "def": 0,
+              "spa": 0,
+              "spd": 0,
+              "spe": 2
+            },
+            "ivs": {
+              "hp": 31,
+              "atk": 31,
+              "def": 31,
+              "spa": 31,
+              "spd": 31,
+              "spe": 31
+            }
+          },
+          {
+            "species": "Basculegion",
+            "name": "",
+            "item": "Choice Scarf",
+            "ability": "adaptability",
+            "nature": "jolly",
+            "level": 50,
+            "gender": "M",
+            "moves": [
+              "Last Respects",
+              "Wave Crash",
+              "Flip Turn",
+              "Ice Fang"
+            ],
+            "evs": {
+              "hp": 2,
+              "atk": 32,
+              "def": 0,
+              "spa": 0,
+              "spd": 0,
+              "spe": 32
+            },
+            "ivs": {
+              "hp": 31,
+              "atk": 31,
+              "def": 31,
+              "spa": 31,
+              "spd": 31,
+              "spe": 31
+            }
+          }
+        ]
+      }
+    }
+  ]
 }

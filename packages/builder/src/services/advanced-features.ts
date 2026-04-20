@@ -255,7 +255,7 @@ async function simulateAgainstThreatPool(
   format: string,
   deps: AnalyzeTeamDeps,
   iterationsPerOpponent: number,
-): Promise<{ winRate: number; notes: string[] } | null> {
+): Promise<{ winRate: number; notes: string[]; benchmarkLabel: string } | null> {
   if (!deps.simulator || opponents.length === 0) return null;
 
   const summaries = await Promise.all(opponents.map((opponent) => deps.simulator?.simulateMatchup({
@@ -268,10 +268,12 @@ async function simulateAgainstThreatPool(
   const wins = summaries.reduce((sum, summary) => sum + (summary?.wins ?? 0), 0);
   const draws = summaries.reduce((sum, summary) => sum + (summary?.draws ?? 0), 0);
   const iterations = summaries.reduce((sum, summary) => sum + (summary?.iterations ?? 0), 0);
+  const usesManualBenchmarks = opponents.some((opponent) => opponent.source === 'manual-benchmark');
 
   return {
     winRate: iterations > 0 ? (wins + (draws * 0.5)) / iterations : 0.5,
     notes: uniqueStrings(summaries.flatMap((summary) => summary?.notes ?? [])).slice(0, 4),
+    benchmarkLabel: usesManualBenchmarks ? 'your manual benchmark teams' : 'strong live benchmark shells',
   };
 }
 
@@ -330,7 +332,7 @@ async function rescoreTopCandidatesWithSimulation(
     const reasons = [...candidate.reasons];
 
     if (summary.winRate >= 0.62) {
-      reasons.unshift(`tests well in bring-3-aware Showdown sims into strong live benchmark shells (${Math.round(summary.winRate * 100)}%)`);
+      reasons.unshift(`tests well in bring-3-aware Showdown sims into ${summary.benchmarkLabel} (${Math.round(summary.winRate * 100)}%)`);
     } else if (summary.winRate <= 0.42) {
       score -= 4;
       reasons.push('still looks shaky in simulation against the current threat cluster');
