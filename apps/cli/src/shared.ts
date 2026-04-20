@@ -312,6 +312,14 @@ export function formatAnalysisReport(report: AnalysisReport, explain = false): s
     primaryLead,
     ...report.battlePlan.likelyPicks.filter((name) => name !== primaryLead).slice(0, 2),
   ].filter(Boolean).join(' + ');
+  const predictionLines = [
+    typeof report.simulation.movePredictionAccuracy === 'number'
+      ? `- Move-call confidence: ${Math.round(report.simulation.movePredictionAccuracy * 100)}%`
+      : null,
+    typeof report.simulation.switchPredictionAccuracy === 'number'
+      ? `- Switch-call confidence: ${Math.round(report.simulation.switchPredictionAccuracy * 100)}%`
+      : null,
+  ].filter((line): line is string => Boolean(line));
 
   return [
     `Format: ${report.format}`,
@@ -333,6 +341,10 @@ export function formatAnalysisReport(report: AnalysisReport, explain = false): s
     `Weak archetypes: ${weakArchetypes}`,
     `Top pressure threats: ${topThreats}`,
     `Top weakness pressure: ${topWeaknesses}`,
+    ...(predictionLines.length ? ['', 'Prediction quality', ...predictionLines] : []),
+    ...(report.simulation.turnBreakdown.length ? ['', 'Turn flow', ...report.simulation.turnBreakdown.map((note) => `- ${note}`)] : []),
+    ...(report.simulation.damageHighlights.length ? ['', 'Key damage ranges', ...report.simulation.damageHighlights.map((note) => `- ${note}`)] : []),
+    ...(report.simulation.switchPredictions.length ? ['', 'Likely switch trees', ...report.simulation.switchPredictions.map((note) => `- ${note}`)] : []),
     '',
     'Issues',
     issueLines,
@@ -366,6 +378,20 @@ export function formatBringPlan(plan: PreviewMatchupPlan): string {
     '',
     'Damage notes',
     ...(plan.damageNotes.length ? plan.damageNotes.map((note) => `- ${note}`) : ['- None']),
+    '',
+    'Turn flow',
+    ...(plan.turnFlow.length ? plan.turnFlow.map((note) => `- ${note}`) : ['- None']),
+    '',
+    'Prediction notes',
+    ...(plan.predictionNotes.length ? plan.predictionNotes.map((note) => `- ${note}`) : ['- None']),
+    '',
+    'Likely switch trees',
+    ...(plan.switchTrees.length ? plan.switchTrees.map((note) => `- ${note}`) : ['- None']),
+    '',
+    'Alternative lines',
+    ...(plan.alternativePlans.length
+      ? plan.alternativePlans.map((entry, index) => `- ${index + 1}. ${entry.lead} lead | ${entry.bring.join(', ')} | ${Math.round(entry.winRate * 100)}%`)
+      : ['- None']),
     '',
     'Win conditions',
     ...(plan.winConditions.length ? plan.winConditions.map((note) => `- ${note}`) : ['- None']),

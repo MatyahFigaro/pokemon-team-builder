@@ -116,6 +116,9 @@ async function getSimulationAnalysis(
       opponentModel: 'simulator unavailable',
       opponentPreview: [],
       iterations: 0,
+      turnBreakdown: [],
+      damageHighlights: [],
+      switchPredictions: [],
       notes: [],
     };
   }
@@ -127,6 +130,9 @@ async function getSimulationAnalysis(
       opponentModel: 'strong benchmark rotation unavailable',
       opponentPreview: [],
       iterations: 0,
+      turnBreakdown: [],
+      damageHighlights: [],
+      switchPredictions: [],
       notes: [],
     };
   }
@@ -145,6 +151,8 @@ async function getSimulationAnalysis(
   const iterations = summaries.reduce((sum, summary) => sum + (summary?.iterations ?? 0), 0);
   const opponentPreview = uniqueStrings(opponents.flatMap((opponent) => opponent.members.map((member) => member.species))).slice(0, 6);
   const winRate = iterations > 0 ? (wins + (draws * 0.5)) / iterations : 0.5;
+  const moveAccuracies = summaries.map((summary) => summary?.movePredictionAccuracy).filter((value): value is number => typeof value === 'number');
+  const switchAccuracies = summaries.map((summary) => summary?.switchPredictionAccuracy).filter((value): value is number => typeof value === 'number');
 
   const usesManualBenchmarks = opponents.some((opponent) => opponent.source === 'manual-benchmark');
 
@@ -159,7 +167,12 @@ async function getSimulationAnalysis(
     losses,
     draws,
     winRate,
-    notes: uniqueStrings(summaries.flatMap((summary) => summary?.notes ?? [])).slice(0, 5),
+    movePredictionAccuracy: moveAccuracies.length ? moveAccuracies.reduce((sum, value) => sum + value, 0) / moveAccuracies.length : undefined,
+    switchPredictionAccuracy: switchAccuracies.length ? switchAccuracies.reduce((sum, value) => sum + value, 0) / switchAccuracies.length : undefined,
+    turnBreakdown: uniqueStrings(summaries.flatMap((summary) => summary?.turnBreakdown ?? [])).slice(0, 6),
+    damageHighlights: uniqueStrings(summaries.flatMap((summary) => summary?.damageHighlights ?? [])).slice(0, 6),
+    switchPredictions: uniqueStrings(summaries.flatMap((summary) => summary?.switchPredictions ?? [])).slice(0, 6),
+    notes: uniqueStrings(summaries.flatMap((summary) => summary?.notes ?? [])).slice(0, 6),
   };
 }
 

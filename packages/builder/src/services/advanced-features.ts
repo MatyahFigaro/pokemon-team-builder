@@ -1,10 +1,16 @@
-import type { PokemonSet, SpeciesDexPort, Suggestion, Team, ValidationPort } from '@pokemon/domain';
+import type { MatchupSummary, PokemonSet, SpeciesDexPort, Suggestion, Team, ValidationPort } from '@pokemon/domain';
 import { getSpeciesUsage, getTopUsageNames, getTopUsageThreatNames, getUsageAnalyticsForFormat, getUsageWeight, preloadUsageAnalytics } from '@pokemon/storage';
 
 import { summarizeRoles } from '../analysis/roles.js';
 import { getCompetitiveSet, getCompetitiveSetPreview, type PreviewRoleHint } from '../suggest/legal-preview.js';
 import { analyzeTeam, type AnalyzeTeamDeps, type SimulationSelectionOptions } from './analyze-team.js';
 import { buildStrongThreatSimulationTeams } from './simulation-benchmarks.js';
+
+export interface PreviewAlternativePlan {
+  lead: string;
+  bring: string[];
+  winRate: number;
+}
 
 export interface PreviewMatchupPlan {
   recommendedLead: string;
@@ -15,6 +21,10 @@ export interface PreviewMatchupPlan {
   pace: 'fast' | 'balanced' | 'slow';
   speedNotes: string[];
   damageNotes: string[];
+  turnFlow: string[];
+  predictionNotes: string[];
+  switchTrees: string[];
+  alternativePlans: PreviewAlternativePlan[];
   winConditions: string[];
   reasons: string[];
 }
@@ -702,6 +712,10 @@ function scoreAnchorFit(
   };
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
 function getBestDamagingMove(attackerSet: PokemonSet, defenderSet: PokemonSet, dex: SpeciesDexPort, format: string) {
   const attacker = dex.getBattleProfile(attackerSet, format);
   const defender = dex.getBattleProfile(defenderSet, format);
@@ -729,6 +743,179 @@ function estimateDamageLabel(score: number): string {
   if (score >= 140) return 'strong 2HKO pressure';
   if (score >= 95) return 'solid chip into a follow-up KO';
   return 'mostly positioning pressure';
+}
+
+function scorePreviewSetIntoTarget(attackerSet: PokemonSet, defenderSet: PokemonSet, dex: SpeciesDexPort, format: string): number {
+  const attacker = dex.getBattleProfile(attackerSet, format);
+  const defender = dex.getBattleProfile(defenderSet, format);
+  if (!attacker || !defender) return 0;
+
+  const best = getBestDamagingMove(attackerSet, defenderSet, dex, format);
+  const reply = getBestDamagingMove(defenderSet, attackerSet, dex, format);
+
+  let score = (best?.score ?? 25) - (reply?.score ?? 25);
+  score += (attacker.baseStats.spe - defender.baseStats.spe) * 0.35;
+  score += ((attacker.baseStats.hp + attacker.baseStats.def + attacker.baseStats.spd) - (defender.baseStats.hp + defender.baseStats.def + defender.baseStats.spd)) * 0.04;
+
+  if ((best?.effectiveness ?? 1) >= 2) score += 10;
+  if ((reply?.effectiveness ?? 1) >= 2) score -= 10;
+
+  return score;
+}
+
+function estimateDamageRange(score: number): { min: number; max: number } {
+  const center = clamp(Math.round(18 + (score * 0.34)), 10, 94);
+  const spread = center >= 70 ? 12 : center >= 45 ? 10 : 8;
+  const min = clamp(center - spread, 5, 95);
+  const max = clamp(center + spread, min + 5, 100);
+  return { min, max };
+}
+
+function formatDamageRange(score: number): string {
+  const range = estimateDamageRange(score);
+  return `~${range.min}-${range.max}%`;
+}
+
+async function buildAlternativePlans(
+  team: Team,
+  opponent: Team,
+  dex: SpeciesDexPort,
+  format: string,
+  roleMap: Map<string, string[]>,
+  deps: AnalyzeTeamDeps,
+): Promise<PreviewAlternativePlan[]> {
+  const bringSize = Math.min(3, team.members.length);
+  if (bringSize === 0) return [];
+
+  const candidatePlans = getCombinations(team.members, bringSize)
+    .map((members) => scoreBringLine(members, opponent, dex, format, roleMap))
+    .sort((left, right) => right.score - left.score)
+    .slice(0, 3);
+
+  const opponentRoles = summarizeRoles(opponent, dex);
+  const opponentRoleMap = new Map(opponentRoles.map((entry) => [entry.member, [...entry.roles]]));
+  const opponentBestPlan = getCombinations(opponent.members, Math.min(bringSize, opponent.members.length))
+    .map((members) => scoreBringLine(members, team, dex, format, opponentRoleMap))
+    .sort((left, right) => right.score - left.score)[0];
+
+  const opponentBring = (opponentBestPlan?.ordered ?? opponent.members).slice(0, bringSize);
+
+  const plans = await Promise.all(candidatePlans.map(async (plan, index) => {
+    let winRate = clamp(0.58 - (index * 0.07), 0.35, 0.85);
+
+    if (deps.simulator) {
+      const summary = await deps.simulator.simulateMatchup({
+        format,
+        team: hydrateTeamForSimulation({ format, source: 'generated', members: plan.ordered.slice(0, bringSize) }, deps),
+        opponent: hydrateTeamForSimulation({ format, source: 'generated', members: opponentBring }, deps),
+        iterations: 4,
+      });
+      winRate = summary.winRate;
+    }
+
+    return {
+      lead: memberName(plan.ordered[0] ?? team.members[0]!),
+      bring: plan.ordered.map(memberName),
+      winRate,
+    } satisfies PreviewAlternativePlan;
+  }));
+
+  return plans.filter((plan, index, array) => array.findIndex((entry) => entry.bring.join('|') === plan.bring.join('|')) === index);
+}
+
+function buildSwitchTrees(
+  recommendedLead: string,
+  opponentLikelyLeads: string[],
+  team: Team,
+  opponent: Team,
+  dex: SpeciesDexPort,
+  format: string,
+): string[] {
+  const ourLead = team.members.find((member) => memberName(member) === recommendedLead || member.species === recommendedLead);
+  if (!ourLead) return [];
+
+  return opponentLikelyLeads.slice(0, 3).map((leadName, index) => {
+    const leadSet = opponent.members.find((member) => memberName(member) === leadName || member.species === leadName);
+    if (!leadSet) return null;
+
+    const likelySwitches = opponent.members
+      .filter((member) => toId(member.species) !== toId(leadSet.species))
+      .map((member) => ({
+        species: member.species,
+        score: scorePreviewSetIntoTarget(member, ourLead, dex, format) - scorePreviewSetIntoTarget(ourLead, member, dex, format),
+      }))
+      .sort((left, right) => right.score - left.score)
+      .slice(0, 2)
+      .map((entry) => entry.species);
+
+    if (likelySwitches.length === 0) {
+      return `Turn ${index + 1}: into ${leadName}, they are more likely to stay in and trade.`;
+    }
+
+    return `Turn ${index + 1}: into ${leadName}, expect a switch to ${likelySwitches.join(' or ')} if ${recommendedLead} takes momentum.`;
+  }).filter((entry): entry is string => Boolean(entry));
+}
+
+function buildPredictionNotes(
+  recommendedLead: string,
+  opponentLikelyLeads: string[],
+  team: Team,
+  opponent: Team,
+  dex: SpeciesDexPort,
+  format: string,
+): string[] {
+  const ourLead = team.members.find((member) => memberName(member) === recommendedLead || member.species === recommendedLead);
+  if (!ourLead) return [];
+
+  let moveAccuracySum = 0;
+  let switchAccuracySum = 0;
+  let moveSamples = 0;
+  let switchSamples = 0;
+
+  for (const leadName of opponentLikelyLeads.slice(0, 3)) {
+    const leadSet = opponent.members.find((member) => memberName(member) === leadName || member.species === leadName);
+    if (!leadSet) continue;
+
+    const direct = getBestDamagingMove(ourLead, leadSet, dex, format);
+    if (!direct) continue;
+
+    const likelySwitches = opponent.members
+      .filter((member) => toId(member.species) !== toId(leadSet.species))
+      .map((member) => ({
+        member,
+        score: scorePreviewSetIntoTarget(member, ourLead, dex, format) - scorePreviewSetIntoTarget(ourLead, member, dex, format),
+      }))
+      .sort((left, right) => right.score - left.score)
+      .slice(0, 2);
+
+    const targets = [leadSet, ...likelySwitches.map((entry) => entry.member)];
+    const matching = targets.filter((target) => getBestDamagingMove(ourLead, target, dex, format)?.move.name === direct.move.name).length;
+    moveAccuracySum += matching / Math.max(1, targets.length);
+    moveSamples += 1;
+
+    if (likelySwitches.length > 0) {
+      const top = likelySwitches[0]?.score ?? 0;
+      const second = likelySwitches[1]?.score ?? top - 6;
+      switchAccuracySum += clamp(0.55 + Math.max(0, top - second) / 60, 0.55, 0.9);
+      switchSamples += 1;
+    }
+  }
+
+  const moveAccuracy = moveSamples > 0 ? Math.round((moveAccuracySum / moveSamples) * 100) : undefined;
+  const switchAccuracy = switchSamples > 0 ? Math.round((switchAccuracySum / switchSamples) * 100) : undefined;
+
+  return uniqueStrings([
+    ...(moveAccuracy ? [`Safe-click move prediction accuracy with ${recommendedLead} is about ${moveAccuracy}% into the likely lead branches.`] : []),
+    ...(switchAccuracy ? [`Likely switch-call confidence sits around ${switchAccuracy}% on the early-turn trees.`] : []),
+  ]);
+}
+
+function getTurnFlowNotes(summary: MatchupSummary | null, pace: PreviewMatchupPlan['pace']): string[] {
+  if (summary?.turnBreakdown?.length) return summary.turnBreakdown;
+
+  if (pace === 'fast') return ['Turns 1-4 should decide most of the matchup equity here.'];
+  if (pace === 'slow') return ['This matchup usually shifts later, so preserving your bulky pivots matters more.'];
+  return ['The key turn window looks balanced, so small positioning edges should snowball the game.'];
 }
 
 function getPace(team: Team, opponent: Team, dex: SpeciesDexPort, format: string): PreviewMatchupPlan['pace'] {
@@ -885,6 +1072,10 @@ export async function planBringFromPreview(team: Team, opponent: Team | null, de
       pace: 'balanced',
       speedNotes: [`Current speed control looks ${report.battlePlan.speedControlRating}.`],
       damageNotes: ['Add an opponent preview with --opponent for direct matchup pressure notes.'],
+      turnFlow: ['Add an opponent preview to unlock turn-by-turn win and loss windows.'],
+      predictionNotes: ['Add an opponent preview to measure move and switch prediction confidence.'],
+      switchTrees: [],
+      alternativePlans: [],
       winConditions: report.battlePlan.notes.slice(0, 3),
       reasons: ['Using your current internal bring-3 plan because no opponent preview was supplied.'],
     };
@@ -936,7 +1127,7 @@ export async function planBringFromPreview(team: Team, opponent: Team | null, de
 
       const bestMove = getBestDamagingMove(attacker, target, deps.dex, team.format);
       if (!bestMove) return [];
-      return [`${entry.name} pressures ${targetName} with ${bestMove.move.name} for ${estimateDamageLabel(bestMove.score)}.`];
+      return [`${entry.name} pressures ${targetName} with ${bestMove.move.name} for ${formatDamageRange(bestMove.score)}; ${estimateDamageLabel(bestMove.score)}.`];
     });
   }).slice(0, 6);
 
@@ -955,6 +1146,10 @@ export async function planBringFromPreview(team: Team, opponent: Team | null, de
   const recommendedBring = (bestLine?.ordered ?? team.members.slice(0, bringSize)).map(memberName);
   const recommendedLead = recommendedBring[0] ?? ourRanked[0]?.name ?? 'None';
   const benchOrder = ourRanked.map((entry) => entry.name).filter((name) => !recommendedBring.includes(name));
+  const pace = getPace(team, opponent, deps.dex, team.format);
+  const switchTrees = buildSwitchTrees(recommendedLead, opponentLikelyLeads, team, opponent, deps.dex, team.format);
+  const predictionNotes = buildPredictionNotes(recommendedLead, opponentLikelyLeads, team, opponent, deps.dex, team.format);
+  const alternativePlans = await buildAlternativePlans(team, opponent, deps.dex, team.format, roleMap, deps);
 
   const winConditions = recommendedBring.map((name) => {
     const roleEntry = roles.find((entry) => entry.member === name);
@@ -971,11 +1166,13 @@ export async function planBringFromPreview(team: Team, opponent: Team | null, de
     ...(bestLine?.reasons ?? []),
   ];
 
+  let simSummary: MatchupSummary | null = null;
+
   if (deps.simulator) {
     const simulationTeam = hydrateTeamForSimulation(team, deps);
     const simulationOpponent = hydrateTeamForSimulation(opponent, deps);
 
-    const simSummary = await deps.simulator.simulateMatchup({
+    simSummary = await deps.simulator.simulateMatchup({
       format: team.format,
       team: simulationTeam,
       opponent: simulationOpponent,
@@ -983,7 +1180,16 @@ export async function planBringFromPreview(team: Team, opponent: Team | null, de
     });
 
     reasons.unshift(`Showdown-backed sim projects roughly ${Math.round(simSummary.winRate * 100)}% into the revealed preview.`);
-    damageNotes.unshift(...simSummary.notes.slice(0, 2));
+    damageNotes.unshift(...simSummary.damageHighlights.slice(0, 2), ...simSummary.notes.slice(0, 1));
+    predictionNotes.unshift(
+      ...(typeof simSummary.movePredictionAccuracy === 'number'
+        ? [`Simulator move-call accuracy: ${Math.round(simSummary.movePredictionAccuracy * 100)}%.`]
+        : []),
+      ...(typeof simSummary.switchPredictionAccuracy === 'number'
+        ? [`Simulator switch-call accuracy: ${Math.round(simSummary.switchPredictionAccuracy * 100)}%.`]
+        : []),
+    );
+    switchTrees.unshift(...simSummary.switchPredictions.slice(0, 2));
 
     if (simSummary.winRate <= 0.45) {
       speedNotes.push('Simulation says the opening trades are fragile, so preserve speed control and avoid passive sacks.');
@@ -996,9 +1202,13 @@ export async function planBringFromPreview(team: Team, opponent: Team | null, de
     benchOrder,
     opponentLikelyLeads,
     opponentBacklinePatterns,
-    pace: getPace(team, opponent, deps.dex, team.format),
+    pace,
     speedNotes: uniqueStrings(speedNotes),
     damageNotes: uniqueStrings(damageNotes).slice(0, 6),
+    turnFlow: uniqueStrings(getTurnFlowNotes(simSummary, pace)).slice(0, 4),
+    predictionNotes: uniqueStrings(predictionNotes).slice(0, 4),
+    switchTrees: uniqueStrings(switchTrees).slice(0, 4),
+    alternativePlans: alternativePlans.slice(0, 3),
     winConditions: uniqueStrings(winConditions).slice(0, 4),
     reasons: uniqueStrings(reasons),
   };

@@ -13,5 +13,10 @@ export interface MatchupSummary {
   losses: number;
   draws: number;
   winRate: number;
+  movePredictionAccuracy?: number;
+  switchPredictionAccuracy?: number;
+  turnBreakdown: string[];
+  damageHighlights: string[];
+  switchPredictions: string[];
   notes: string[];
 }
