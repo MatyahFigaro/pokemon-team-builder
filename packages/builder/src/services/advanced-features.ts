@@ -3,7 +3,7 @@ import { getSpeciesUsage, getTopUsageNames, getTopUsageThreatNames, getUsageAnal
 
 import { summarizeRoles } from '../analysis/roles.js';
 import { getCompetitiveSet, getCompetitiveSetPreview, type PreviewRoleHint } from '../suggest/legal-preview.js';
-import { analyzeTeam, type AnalyzeTeamDeps } from './analyze-team.js';
+import { analyzeTeam, type AnalyzeTeamDeps, type SimulationSelectionOptions } from './analyze-team.js';
 import { buildStrongThreatSimulationTeams } from './simulation-benchmarks.js';
 
 export interface PreviewMatchupPlan {
@@ -60,6 +60,7 @@ export interface BuildConstraints {
   style?: 'balance' | 'hyper-offense' | 'bulky-offense' | 'stall' | 'trick-room' | 'rain' | 'sun' | 'sand';
   avoidSpecies?: string[];
   allowRestricted?: boolean;
+  simTeams?: number | 'all';
 }
 
 export interface BuildRecommendation {
@@ -242,9 +243,14 @@ function getCombinations<T>(values: T[], size: number): T[][] {
   return combinations;
 }
 
-function buildThreatSimulationTeams(format: string, dex: SpeciesDexPort, validator: ValidationPort): Team[] {
+function buildThreatSimulationTeams(
+  format: string,
+  dex: SpeciesDexPort,
+  validator: ValidationPort,
+  simTeams: number | 'all' = 1,
+): Team[] {
   return buildStrongThreatSimulationTeams(format, dex, validator, {
-    maxTeams: isBssLikeFormat(format) ? 5 : 4,
+    maxTeams: simTeams,
     roleHintResolver: (speciesName, style) => getBuildRoleHint(speciesName, dex, style),
   });
 }
@@ -273,7 +279,9 @@ async function simulateAgainstThreatPool(
   return {
     winRate: iterations > 0 ? (wins + (draws * 0.5)) / iterations : 0.5,
     notes: uniqueStrings(summaries.flatMap((summary) => summary?.notes ?? [])).slice(0, 4),
-    benchmarkLabel: usesManualBenchmarks ? 'your manual benchmark teams' : 'strong live benchmark shells',
+    benchmarkLabel: usesManualBenchmarks
+      ? `your manual benchmark rotation (${opponents.length} teams)`
+      : `the strong live benchmark rotation (${opponents.length} shells)`,
   };
 }
 
@@ -298,7 +306,12 @@ async function rescoreTopCandidatesWithSimulation(
 ): Promise<RankedBuildCandidate[]> {
   if (!deps.simulator) return candidates;
 
-  const probeOpponents = buildThreatSimulationTeams(constraints.format, deps.dex, deps.validator);
+  const probeOpponents = buildThreatSimulationTeams(
+    constraints.format,
+    deps.dex,
+    deps.validator,
+    constraints.simTeams ?? 1,
+  );
   if (probeOpponents.length === 0) return candidates;
 
   const simulationWindow = candidates.length;
@@ -332,12 +345,12 @@ async function rescoreTopCandidatesWithSimulation(
     const reasons = [...candidate.reasons];
 
     if (summary.winRate >= 0.62) {
-      reasons.unshift(`tests well in bring-3-aware Showdown sims into ${summary.benchmarkLabel} (${Math.round(summary.winRate * 100)}%)`);
+      reasons.unshift(`tests well in bring-3-aware Showdown sims into ${summary.benchmarkLabel} at ${Math.round(summary.winRate * 100)}%`);
     } else if (summary.winRate <= 0.42) {
       score -= 4;
-      reasons.push('still looks shaky in simulation against the current threat cluster');
+      reasons.push(`still looks shaky in simulation against ${summary.benchmarkLabel}`);
     } else {
-      reasons.push('simulation looks playable but matchup-dependent into the live threat core');
+      reasons.push(`simulation looks playable but matchup-dependent into ${summary.benchmarkLabel}`);
     }
 
     return {
@@ -1025,7 +1038,11 @@ function describeSetChanges(current: PokemonSet, optimized: PokemonSet): string[
   return changes;
 }
 
-export async function optimizeTeamSets(team: Team, deps: AnalyzeTeamDeps): Promise<TeamSetOptimizationReport> {
+export async function optimizeTeamSets(
+  team: Team,
+  deps: AnalyzeTeamDeps,
+  options: SimulationSelectionOptions = {},
+): Promise<TeamSetOptimizationReport> {
   await preloadUsageAnalytics(team.format);
   const roles = summarizeRoles(team, deps.dex);
 
@@ -1070,12 +1087,15 @@ export async function optimizeTeamSets(team: Team, deps: AnalyzeTeamDeps): Promi
     return merged;
   });
 
+  const optimizedTeam: Team = {
+    ...team,
+    members: optimizedMembers,
+  };
+  const analysis = await analyzeTeam(optimizedTeam, deps, options);
+
   return {
-    optimizedTeam: {
-      ...team,
-      members: optimizedMembers,
-    },
-    suggestions,
+    optimizedTeam,
+    suggestions: [...suggestions, ...analysis.suggestions].slice(0, 4),
     entries,
   };
 }
@@ -1302,7 +1322,12 @@ async function selectRecommendationsWithIteration(
     };
   }
 
-  const probeOpponents = buildThreatSimulationTeams(constraints.format, deps.dex, deps.validator);
+  const probeOpponents = buildThreatSimulationTeams(
+    constraints.format,
+    deps.dex,
+    deps.validator,
+    constraints.simTeams ?? 1,
+  );
   if (probeOpponents.length === 0) {
     return {
       recommendations: selectDiverseRecommendations(candidates, limit, maxMegaCount, maxHazardCount, initialTagCounts),
@@ -1393,7 +1418,9 @@ export async function buildWithConstraints(constraints: BuildConstraints, deps: 
     members: seedMembers,
   };
 
-  const report = await analyzeTeam(seedTeam, deps);
+  const report = await analyzeTeam(seedTeam, deps, {
+    simTeams: constraints.simTeams ?? 1,
+  });
   const missingRoles = inferMissingRolesFromAnchors(seedTeam, report, deps.dex);
   const existing = new Set(seedTeam.members.map((member) => toId(member.species)));
   const available = deps.dex.listAvailableSpecies(constraints.format);
@@ -1585,11 +1612,11 @@ export async function buildWithConstraints(constraints: BuildConstraints, deps: 
             'The builder also avoids stuffing the roster with too many Mega options; at most two Mega candidates are kept, and they still need real synergy with the rest of the shell.',
             'It also avoids overstacking hazard setters, so field pressure does not crowd out better bring-3 partners.',
             'Type stacking is now capped much more aggressively as well, so the shell should stay structurally cleaner.',
-            deps.simulator ? 'Top shortlist options are now iterated through bring-3-aware Showdown matchup sims against the current live threat cluster until the shell clears or approaches the target win-rate band.' : undefined,
+            deps.simulator ? 'Top shortlist options are now iterated through bring-3-aware Showdown matchup sims against the selected benchmark rotation until the shell clears or approaches the target win-rate band.' : undefined,
             iterativeSelection.projectedWinRate
               ? (iterativeSelection.projectedWinRate >= (isBssLikeFormat(constraints.format) ? 0.58 : 0.55)
-                  ? `The current iterative shell reached about ${Math.round(iterativeSelection.projectedWinRate * 100)}% in the live threat-cluster sim.`
-                  : `The current iterative shell plateaued around ${Math.round(iterativeSelection.projectedWinRate * 100)}% in the live threat-cluster sim, so more refinement is still possible.`)
+                  ? `The current iterative shell reached about ${Math.round(iterativeSelection.projectedWinRate * 100)}% against that selected benchmark rotation.`
+                  : `The current iterative shell plateaued around ${Math.round(iterativeSelection.projectedWinRate * 100)}% against that selected benchmark rotation, so more refinement is still possible.`)
               : undefined,
             `Current live pressure points include ${(report.threats.topPressureThreats ?? []).slice(0, 3).map((threat) => threat.species).join(', ') || 'the usual top threats'}.`,
           ]

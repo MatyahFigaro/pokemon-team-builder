@@ -18,6 +18,10 @@ export interface AnalyzeTeamDeps {
   simulator?: SimulationPort;
 }
 
+export interface SimulationSelectionOptions {
+  simTeams?: number | 'all';
+}
+
 function normalize(value: string | undefined): string {
   return (value ?? '').trim().toLowerCase();
 }
@@ -90,13 +94,22 @@ function hydrateTeamWithReferenceSets(team: Team, deps: AnalyzeTeamDeps): Team {
   };
 }
 
-function buildThreatSimulationTeams(team: Team, deps: AnalyzeTeamDeps): Team[] {
+function buildThreatSimulationTeams(team: Team, deps: AnalyzeTeamDeps, simTeams: number | 'all' = 1): Team[] {
   return buildStrongThreatSimulationTeams(team.format, deps.dex, deps.validator, {
-    maxTeams: isBssLikeFormat(team.format) ? 5 : 4,
+    maxTeams: simTeams,
   });
 }
 
-async function getSimulationAnalysis(team: Team, deps: AnalyzeTeamDeps): Promise<SimulationAnalysisSummary> {
+function describeSimulationPool(simulation: Pick<SimulationAnalysisSummary, 'opponentModel' | 'opponentPreview'>): string {
+  const sample = simulation.opponentPreview.join(', ');
+  return sample ? `${simulation.opponentModel}; sample: ${sample}` : simulation.opponentModel;
+}
+
+async function getSimulationAnalysis(
+  team: Team,
+  deps: AnalyzeTeamDeps,
+  options: SimulationSelectionOptions = {},
+): Promise<SimulationAnalysisSummary> {
   if (!deps.simulator) {
     return {
       enabled: false,
@@ -107,7 +120,7 @@ async function getSimulationAnalysis(team: Team, deps: AnalyzeTeamDeps): Promise
     };
   }
 
-  const opponents = buildThreatSimulationTeams(team, deps);
+  const opponents = buildThreatSimulationTeams(team, deps, options.simTeams ?? 1);
   if (opponents.length === 0) {
     return {
       enabled: false,
@@ -150,7 +163,11 @@ async function getSimulationAnalysis(team: Team, deps: AnalyzeTeamDeps): Promise
   };
 }
 
-export async function analyzeTeam(team: Team, deps: AnalyzeTeamDeps): Promise<AnalysisReport> {
+export async function analyzeTeam(
+  team: Team,
+  deps: AnalyzeTeamDeps,
+  options: SimulationSelectionOptions = {},
+): Promise<AnalysisReport> {
   const referenceAwareTeam = hydrateTeamWithReferenceSets(team, deps);
   const validation = await deps.validator.validateTeam(referenceAwareTeam, team.format);
   const workingTeam = validation.normalizedTeam ?? referenceAwareTeam;
@@ -162,7 +179,7 @@ export async function analyzeTeam(team: Team, deps: AnalyzeTeamDeps): Promise<An
   const speedAnalysis = analyzeSpeed(workingTeam, deps.dex, roles);
   const synergyAnalysis = analyzeSynergy(workingTeam, deps.dex, roles);
   const bssAnalysis = analyzeBssPlan(workingTeam, deps.dex, roles, speedAnalysis.speed);
-  const simulation = await getSimulationAnalysis(workingTeam, deps);
+  const simulation = await getSimulationAnalysis(workingTeam, deps, options);
 
   const simulationIssues: TeamIssue[] = simulation.enabled && typeof simulation.winRate === 'number'
     ? (simulation.winRate < 0.45
@@ -170,7 +187,7 @@ export async function analyzeTeam(team: Team, deps: AnalyzeTeamDeps): Promise<An
           code: 'simulation-matchups-rough',
           severity: 'warning',
           summary: 'Sim-backed matchup spread looks rough',
-          details: `This team only reached about ${Math.round(simulation.winRate * 100)}% across ${simulation.iterations} games into the strong benchmark cluster (${simulation.opponentPreview.join(', ') || simulation.opponentModel}).`,
+          details: `This team only reached about ${Math.round(simulation.winRate * 100)}% across ${simulation.iterations} games against the selected benchmark rotation (${describeSimulationPool(simulation)}).`,
           memberNames: workingTeam.members.map((member) => member.species),
         }]
       : simulation.winRate >= 0.6
@@ -178,7 +195,7 @@ export async function analyzeTeam(team: Team, deps: AnalyzeTeamDeps): Promise<An
             code: 'simulation-matchups-solid',
             severity: 'info',
             summary: 'Sim-backed matchup spread looks solid',
-            details: `This team reached about ${Math.round(simulation.winRate * 100)}% across ${simulation.iterations} games into the strong benchmark cluster (${simulation.opponentPreview.join(', ') || simulation.opponentModel}).`,
+            details: `This team reached about ${Math.round(simulation.winRate * 100)}% across ${simulation.iterations} games against the selected benchmark rotation (${describeSimulationPool(simulation)}).`,
             memberNames: workingTeam.members.map((member) => member.species),
           }]
         : [])
@@ -189,7 +206,7 @@ export async function analyzeTeam(team: Team, deps: AnalyzeTeamDeps): Promise<An
     notes: uniqueStrings([
       ...bssAnalysis.battlePlan.notes,
       simulation.enabled && typeof simulation.winRate === 'number'
-        ? `Simulation snapshot versus ${simulation.opponentPreview.join(', ') || simulation.opponentModel} landed around ${Math.round(simulation.winRate * 100)}% over ${simulation.iterations} games against the stronger default benchmark pool.`
+        ? `Simulation snapshot into the selected benchmark rotation (${describeSimulationPool(simulation)}) landed around ${Math.round(simulation.winRate * 100)}% over ${simulation.iterations} games.`
         : '',
       ...simulation.notes,
     ]),

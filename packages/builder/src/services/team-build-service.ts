@@ -11,7 +11,7 @@ import {
   type PreviewMatchupPlan,
   type TeamSetOptimizationReport,
 } from './advanced-features.js';
-import { analyzeTeam, type AnalyzeTeamDeps } from './analyze-team.js';
+import { analyzeTeam, type AnalyzeTeamDeps, type SimulationSelectionOptions } from './analyze-team.js';
 
 export interface TeamBuildServiceDeps extends AnalyzeTeamDeps {
   codec?: TeamCodecPort;
@@ -36,12 +36,12 @@ export class TeamBuildService {
     return this.deps.codec.exportShowdown(team);
   }
 
-  analyze(team: Team): Promise<AnalysisReport> {
-    return analyzeTeam(team, this.deps);
+  analyze(team: Team, options: SimulationSelectionOptions = {}): Promise<AnalysisReport> {
+    return analyzeTeam(team, this.deps, options);
   }
 
-  async suggestPatch(team: Team): Promise<Suggestion[]> {
-    const report = await this.analyze(team);
+  async suggestPatch(team: Team, options: SimulationSelectionOptions = {}): Promise<Suggestion[]> {
+    const report = await this.analyze(team, options);
     return report.suggestions;
   }
 
@@ -49,8 +49,8 @@ export class TeamBuildService {
     return planBringFromPreview(team, opponent ?? null, this.deps);
   }
 
-  optimizeSets(team: Team): Promise<TeamSetOptimizationReport> {
-    return optimizeTeamSets(team, this.deps);
+  optimizeSets(team: Team, options: SimulationSelectionOptions = {}): Promise<TeamSetOptimizationReport> {
+    return optimizeTeamSets(team, this.deps, options);
   }
 
   scoutMeta(format: string): Promise<MetaScoutingReport> {

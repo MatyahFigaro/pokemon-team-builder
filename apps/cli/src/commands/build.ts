@@ -1,6 +1,6 @@
 import type { Command } from 'commander';
 
-import { createService, formatConstrainedBuild, readTeamText } from '../shared.js';
+import { createCliProgress, createService, describeSimTeamSelection, formatConstrainedBuild, parseSimulationTeamCount, readTeamText } from '../shared.js';
 
 function splitList(value?: string): string[] {
   return (value ?? '')
@@ -20,6 +20,7 @@ export function registerBuildCommand(program: Command): void {
     .option('--avoid <species>', 'Comma-separated species to avoid')
     .option('--allow-restricted', 'Allow restricted high-BST options')
     .option('--json', 'Print raw JSON instead of a formatted report')
+    .option('--sim-teams <count|all>', 'How many benchmark teams to use for simulation; defaults to 1', '1')
     .action(async (options: {
       file?: string;
       format: string;
@@ -28,26 +29,41 @@ export function registerBuildCommand(program: Command): void {
       avoid?: string;
       allowRestricted?: boolean;
       json?: boolean;
+      simTeams?: string;
     }) => {
-      const service = createService();
-      const anchors = splitList(options.core);
+      const progress = createCliProgress('Building around your core', !options.json);
 
-      if (options.file) {
-        const teamText = await readTeamText(options.file);
-        const team = service.importShowdown(teamText, options.format);
-        for (const member of team.members) {
-          if (!anchors.includes(member.species)) anchors.push(member.species);
+      try {
+        progress.step('Preparing requested core', { current: 1, total: 4, detail: options.style ?? 'flex' });
+        const service = createService();
+        const anchors = splitList(options.core);
+
+        if (options.file) {
+          progress.step('Loading partial team input', { current: 2, total: 4, detail: options.format });
+          const teamText = await readTeamText(options.file);
+          const team = service.importShowdown(teamText, options.format);
+          for (const member of team.members) {
+            if (!anchors.includes(member.species)) anchors.push(member.species);
+          }
         }
+
+        const simTeams = parseSimulationTeamCount(options.simTeams);
+        progress.step('Scoring candidates and running sims', { current: 3, total: 4, detail: describeSimTeamSelection(simTeams) });
+        const report = await service.buildWithConstraints({
+          format: options.format,
+          coreSpecies: anchors,
+          style: options.style,
+          avoidSpecies: splitList(options.avoid),
+          allowRestricted: options.allowRestricted,
+          simTeams,
+        });
+
+        progress.step('Rendering build report', { current: 4, total: 4 });
+        console.log(options.json ? JSON.stringify(report, null, 2) : formatConstrainedBuild(report));
+        progress.succeed('Build complete');
+      } catch (error) {
+        progress.fail('Build failed');
+        throw error;
       }
-
-      const report = await service.buildWithConstraints({
-        format: options.format,
-        coreSpecies: anchors,
-        style: options.style,
-        avoidSpecies: splitList(options.avoid),
-        allowRestricted: options.allowRestricted,
-      });
-
-      console.log(options.json ? JSON.stringify(report, null, 2) : formatConstrainedBuild(report));
     });
 }

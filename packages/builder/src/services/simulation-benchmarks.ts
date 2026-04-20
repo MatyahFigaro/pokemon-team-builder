@@ -6,7 +6,7 @@ import { getCompetitiveSet, type PreviewRoleHint } from '../suggest/legal-previe
 type BenchmarkStyle = 'balance' | 'hyper-offense' | 'bulky-offense' | 'stall' | 'trick-room' | 'rain' | 'sun' | 'sand';
 
 interface BuildStrongThreatSimulationOptions {
-  maxTeams?: number;
+  maxTeams?: number | 'all';
   roleHintResolver?: (speciesName: string, style?: BenchmarkStyle) => PreviewRoleHint;
 }
 
@@ -125,7 +125,9 @@ export function buildStrongThreatSimulationTeams(
   validator: ValidationPort,
   options: BuildStrongThreatSimulationOptions = {},
 ): Team[] {
-  const maxTeams = options.maxTeams ?? (isBssLikeFormat(format) ? 5 : 4);
+  const maxTeams = options.maxTeams === 'all'
+    ? Number.POSITIVE_INFINITY
+    : Math.max(1, Math.floor(options.maxTeams ?? 1));
   const manualTeams = listManualBenchmarkTeams({ format })
     .slice(0, maxTeams)
     .map((record) => ({

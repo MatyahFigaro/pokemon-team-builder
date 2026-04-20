@@ -75,6 +75,85 @@ const CLIPBOARD_COMMANDS: Array<{ command: string; args: string[] }> = [
   { command: 'powershell.exe', args: ['-NoProfile', '-Command', 'Get-Clipboard'] },
 ];
 
+const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
+export interface CliProgressHandle {
+  readonly enabled: boolean;
+  step(label: string, options?: { current?: number; total?: number; detail?: string }): void;
+  succeed(label?: string): void;
+  fail(label?: string): void;
+}
+
+function renderProgressBar(current?: number, total?: number, width = 18): string {
+  if (!current || !total || total <= 0) {
+    return `[${'░'.repeat(width)}]`;
+  }
+
+  const ratio = Math.max(0, Math.min(1, current / total));
+  const filled = Math.round(ratio * width);
+  return `[${'█'.repeat(filled)}${'░'.repeat(Math.max(0, width - filled))}]`;
+}
+
+export function describeSimTeamSelection(simTeams: number | 'all'): string {
+  return simTeams === 'all'
+    ? 'all saved benchmark teams'
+    : `${simTeams} benchmark team${simTeams === 1 ? '' : 's'}`;
+}
+
+export function createCliProgress(title: string, enabled = process.stderr.isTTY): CliProgressHandle {
+  if (!enabled) {
+    return {
+      enabled: false,
+      step: () => undefined,
+      succeed: () => undefined,
+      fail: () => undefined,
+    };
+  }
+
+  let frameIndex = 0;
+  let currentLabel = title;
+  let currentDetail = '';
+  let currentStep = 0;
+  let totalSteps = 0;
+
+  const render = (symbol?: string, finalize = false): void => {
+    const spinner = symbol ?? SPINNER_FRAMES[frameIndex % SPINNER_FRAMES.length];
+    const prefix = currentStep > 0 && totalSteps > 0 ? `${currentStep}/${totalSteps}` : '...';
+    const line = `${spinner} ${renderProgressBar(currentStep, totalSteps)} ${prefix} ${currentLabel}${currentDetail ? ` — ${currentDetail}` : ''}`;
+    process.stderr.write(`\r${line}   `);
+    if (finalize) process.stderr.write('\n');
+  };
+
+  const timer = setInterval(() => {
+    frameIndex += 1;
+    render();
+  }, 80);
+  timer.unref?.();
+  render('⏳');
+
+  return {
+    enabled: true,
+    step(label, options = {}) {
+      currentLabel = label;
+      currentDetail = options.detail ?? '';
+      currentStep = options.current ?? currentStep;
+      totalSteps = options.total ?? totalSteps;
+      render();
+    },
+    succeed(label) {
+      if (label) currentLabel = label;
+      clearInterval(timer);
+      currentStep = totalSteps || currentStep;
+      render('✔', true);
+    },
+    fail(label) {
+      if (label) currentLabel = label;
+      clearInterval(timer);
+      render('✖', true);
+    },
+  };
+}
+
 export function createService(): TeamBuildService {
   return new TeamBuildService(createShowdownPorts());
 }
@@ -107,6 +186,20 @@ export async function readTeamText(file?: string): Promise<string> {
   }
 
   throw new Error('Provide a team with --file or pipe Showdown text through stdin.');
+}
+
+export function parseSimulationTeamCount(value?: string): number | 'all' {
+  const normalized = (value ?? '1').trim().toLowerCase();
+
+  if (!normalized) return 1;
+  if (normalized === 'all') return 'all';
+
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    throw new Error('Simulation team count must be a positive number or "all".');
+  }
+
+  return Math.floor(parsed);
 }
 
 export function selectSuggestionsByMode(
@@ -204,8 +297,16 @@ export function formatAnalysisReport(report: AnalysisReport, explain = false): s
   const bestArchetypes = report.archetypes.bestMatchups.join(', ') || 'None';
   const weakArchetypes = report.archetypes.weakMatchups.join(', ') || 'None';
   const simulationLine = report.simulation.enabled && typeof report.simulation.winRate === 'number'
-    ? `${Math.round(report.simulation.winRate * 100)}% over ${report.simulation.iterations} games vs ${report.simulation.opponentPreview.join(', ') || report.simulation.opponentModel}`
+    ? `${Math.round(report.simulation.winRate * 100)}% over ${report.simulation.iterations} games`
     : 'unavailable';
+  const simulationDetails = report.simulation.enabled
+    ? [
+        `Benchmark pool: ${report.simulation.opponentModel}`,
+        report.simulation.opponentPreview.length
+          ? `Benchmark sample: ${report.simulation.opponentPreview.join(', ')}`
+          : null,
+      ].filter((line): line is string => Boolean(line))
+    : [];
   const primaryLead = report.battlePlan.leadCandidates[0] ?? report.battlePlan.likelyPicks[0] ?? 'None';
   const primaryLine = [
     primaryLead,
@@ -226,6 +327,7 @@ export function formatAnalysisReport(report: AnalysisReport, explain = false): s
     `Primary line: ${primaryLine || 'None'}`,
     `Tera dependency: ${report.battlePlan.teraDependency === 'not-applicable' ? 'n/a' : report.battlePlan.teraDependency}`,
     `Simulation: ${simulationLine}`,
+    ...simulationDetails,
     `Threat coverage: ${report.threats.coverageScore}/100 from ${report.threats.consideredThreatCount} evaluated threats`,
     `Best archetypes: ${bestArchetypes}`,
     `Weak archetypes: ${weakArchetypes}`,
