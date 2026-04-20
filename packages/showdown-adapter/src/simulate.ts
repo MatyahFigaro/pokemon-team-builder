@@ -89,6 +89,10 @@ function parseConditionPercent(condition?: string): number {
   return 1;
 }
 
+function countLivePokemon(sidePokemon: Array<{ condition: string }>): number {
+  return sidePokemon.filter((pokemon) => !normalize(pokemon.condition).endsWith(' fnt')).length;
+}
+
 function sumPositiveBoosts(boosts: Record<string, number>): number {
   return Object.values(boosts).reduce((sum, value) => sum + (value > 0 ? value : 0), 0);
 }
@@ -616,6 +620,10 @@ class EngineGreedyPlayer {
       const selfBoostTotal = sumPositiveBoosts(this.selfBoosts);
       const foeBoostTotal = sumPositiveBoosts(this.foeBoosts);
       const currentValue = scoreMemberStrategicValue(currentSet, this.dex, this.format);
+      const remainingCount = countLivePokemon(sidePokemon);
+      const isEndgame = remainingCount <= 2 || this.currentTurn >= 8;
+      const shouldPreserveCurrent = (currentValue >= 92 || selfBoostTotal >= 2) && hpRatio <= 0.45;
+      const isExpendableCurrent = currentValue < 82 && selfBoostTotal === 0 && hpRatio <= 0.4 && remainingCount >= 2;
 
       const moveChoices = (activeState.moves ?? [])
         .map((move, index) => {
@@ -692,6 +700,26 @@ class EngineGreedyPlayer {
             if (RECOVERY_MOVES.has(moveId) && hpRatio <= 0.6) score += 4;
           }
 
+          if (isEndgame) {
+            if (!SETUP_MOVES.has(moveId) && !RECOVERY_MOVES.has(moveId) && !STATUS_SPREAD_MOVES.has(moveId) && !HAZARD_MOVES.has(moveId)) {
+              score += 10;
+            }
+            if (PIVOT_MOVES.has(moveId) || HAZARD_MOVES.has(moveId)) score -= 10;
+          }
+
+          if (isExpendableCurrent) {
+            if (!SETUP_MOVES.has(moveId) && !RECOVERY_MOVES.has(moveId) && !STATUS_SPREAD_MOVES.has(moveId) && !HAZARD_MOVES.has(moveId)) {
+              score += 12;
+            }
+            if (PIVOT_MOVES.has(moveId) || HAZARD_MOVES.has(moveId) || SCOUT_MOVES.has(moveId)) score -= 12;
+          }
+
+          if (shouldPreserveCurrent) {
+            if (RECOVERY_MOVES.has(moveId)) score += 8;
+            if (PIVOT_MOVES.has(moveId)) score += 6;
+            if (SETUP_MOVES.has(moveId) && hpRatio < 0.4) score -= 14;
+          }
+
           if (!SETUP_MOVES.has(moveId) && !RECOVERY_MOVES.has(moveId) && !STATUS_SPREAD_MOVES.has(moveId) && !HAZARD_MOVES.has(moveId) && currentValue < 75 && hpRatio < 0.3) {
             score += 8;
           }
@@ -714,12 +742,15 @@ class EngineGreedyPlayer {
       const bestMove = pickRankedOption(moveChoices, () => this.nextRandom(), 10);
       const switchChoices = activeState.trapped ? [] : this.getSwitchOptions(sidePokemon, activeIndex, chosen);
       const bestSwitch = pickRankedOption(switchChoices, () => this.nextRandom(), 8);
+      const shouldSwitch = Boolean(bestSwitch && (
+        !bestMove
+        || (matchupScore < -20 && bestSwitch.score > (bestMove?.score ?? 0) + (isExpendableCurrent ? 14 : 6))
+        || (hpRatio < 0.35 && shouldPreserveCurrent && bestSwitch.score > (bestMove?.score ?? 0) - 2)
+        || (foeBoostTotal >= 2 && !isExpendableCurrent && bestSwitch.score > (bestMove?.score ?? 0))
+        || (selfBoostTotal > 0 && currentValue >= 95 && hpRatio < 0.45 && bestSwitch.score > (bestMove?.score ?? 0) - 1)
+      ));
 
-      if ((!bestMove
-        || (bestSwitch && matchupScore < -20 && bestSwitch.score > bestMove.score + 6)
-        || (bestSwitch && hpRatio < 0.35 && currentValue >= 90 && bestSwitch.score > bestMove.score - 2)
-        || (bestSwitch && foeBoostTotal >= 2 && bestSwitch.score > bestMove.score)
-        || (bestSwitch && selfBoostTotal > 0 && currentValue >= 95 && hpRatio < 0.45 && bestSwitch.score > bestMove.score - 1)) && bestSwitch) {
+      if (shouldSwitch && bestSwitch) {
         chosen.push(bestSwitch.slot);
         return `switch ${bestSwitch.slot}`;
       }
